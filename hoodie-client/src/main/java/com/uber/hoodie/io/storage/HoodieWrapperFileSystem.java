@@ -537,7 +537,9 @@ public class HoodieWrapperFileSystem extends FileSystem {
 
   @Override
   public void close() throws IOException {
-    fileSystem.close();
+    // Don't close the wrapped `fileSystem` object. This will end up closing it for every thread since it
+    // could be cached across jvm. We don't own that object anyway.
+    super.close();
   }
 
   @Override
