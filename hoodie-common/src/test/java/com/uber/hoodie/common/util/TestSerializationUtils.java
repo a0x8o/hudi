@@ -19,6 +19,7 @@ package com.uber.hoodie.common.util;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.LinkedList;
+import java.util.Objects;
 import org.apache.avro.util.Utf8;
 import org.junit.Assert;
 import org.junit.Test;
@@ -33,6 +34,8 @@ public class TestSerializationUtils {
     verifyObject(new NonSerializableClass(null));
     // Object with valid values & no default constructor.
     verifyObject(new NonSerializableClass("testValue"));
+    // Object with multiple constructor
+    verifyObject(new NonSerializableClass("testValue1", "testValue2"));
     // Object which is of non-serializable class.
     verifyObject(new Utf8("test-key"));
     // Verify serialization of list.
@@ -53,9 +56,15 @@ public class TestSerializationUtils {
 
   private static class NonSerializableClass {
     private String id;
+    private String name;
 
     NonSerializableClass(String id) {
+      this(id, "");
+    }
+
+    NonSerializableClass(String id, String name) {
       this.id = id;
+      this.name = name;
     }
 
     @Override
@@ -63,8 +72,8 @@ public class TestSerializationUtils {
       if (!(obj instanceof  NonSerializableClass)) {
         return false;
       }
-      return id == null ? ((NonSerializableClass) obj).id == null
-          : id.equals(((NonSerializableClass) obj).id);
+      final NonSerializableClass other = (NonSerializableClass) obj;
+      return Objects.equals(this.id, other.id) && Objects.equals(this.name, other.name);
     }
   }
 }
