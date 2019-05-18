@@ -155,6 +155,7 @@ public class HoodieCreateHandle<T extends HoodieRecordPayload> extends HoodieIOH
     logger.info("Closing the file " + writeStatus.getFileId() + " as we are done with all the records "
         + recordsWritten);
     try {
+
       storageWriter.close();
 
       HoodieWriteStat stat = new HoodieWriteStat();
@@ -165,8 +166,10 @@ public class HoodieCreateHandle<T extends HoodieRecordPayload> extends HoodieIOH
       stat.setPrevCommit(HoodieWriteStat.NULL_COMMIT);
       stat.setFileId(writeStatus.getFileId());
       stat.setPaths(new Path(config.getBasePath()), path, tempPath);
-      stat.setTotalWriteBytes(FSUtils.getFileSize(fs, getStorageWriterPath()));
-      stat.setTotalWriteErrors(writeStatus.getFailedRecords().size());
+      long fileSizeInBytes = FSUtils.getFileSize(fs, getStorageWriterPath());
+      stat.setTotalWriteBytes(fileSizeInBytes);
+      stat.setFileSizeInBytes(fileSizeInBytes);
+      stat.setTotalWriteErrors(writeStatus.getTotalErrorRecords());
       RuntimeStats runtimeStats = new RuntimeStats();
       runtimeStats.setTotalCreateTime(timer.endTimer());
       stat.setRuntimeStats(runtimeStats);
