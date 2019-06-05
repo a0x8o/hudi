@@ -20,6 +20,7 @@ package com.uber.hoodie.index.bloom;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.uber.hoodie.common.model.HoodieKey;
+import com.uber.hoodie.common.model.HoodieRecord;
 import com.uber.hoodie.common.model.HoodieRecordPayload;
 import com.uber.hoodie.common.table.HoodieTableMetaClient;
 import com.uber.hoodie.common.util.FSUtils;
@@ -27,12 +28,13 @@ import com.uber.hoodie.config.HoodieWriteConfig;
 import com.uber.hoodie.exception.HoodieIOException;
 import com.uber.hoodie.table.HoodieTable;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
@@ -76,7 +78,7 @@ public class HoodieGlobalBloomIndex<T extends HoodieRecordPayload> extends Hoodi
 
   @Override
   @VisibleForTesting
-  JavaPairRDD<String, Tuple2<String, HoodieKey>> explodeRecordRDDWithFileComparisons(
+  JavaRDD<Tuple2<String, HoodieKey>> explodeRecordRDDWithFileComparisons(
       final Map<String, List<BloomIndexFileInfo>> partitionToFileIndexInfo,
       JavaPairRDD<String, String> partitionRecordKeyPairRDD) {
     Map<String, String> indexToPartitionMap = new HashMap<>();
@@ -87,17 +89,35 @@ public class HoodieGlobalBloomIndex<T extends HoodieRecordPayload> extends Hoodi
     IndexFileFilter indexFileFilter = config.getBloomIndexPruneByRanges()
         ? new IntervalTreeBasedGlobalIndexFileFilter(partitionToFileIndexInfo)
         : new ListBasedGlobalIndexFileFilter(partitionToFileIndexInfo);
+
     return partitionRecordKeyPairRDD.map(partitionRecordKeyPair -> {
       String recordKey = partitionRecordKeyPair._2();
       String partitionPath = partitionRecordKeyPair._1();
-      List<Tuple2<String, Tuple2<String, HoodieKey>>> recordComparisons = new ArrayList<>();
-      indexFileFilter.getMatchingFiles(partitionPath, recordKey).forEach(matchingFile -> {
-        recordComparisons.add(
-            new Tuple2<>(String.format("%s#%s", matchingFile, recordKey),
-                new Tuple2<>(matchingFile,
-                    new HoodieKey(recordKey, indexToPartitionMap.get(matchingFile)))));
-      });
-      return recordComparisons;
-    }).flatMapToPair(List::iterator);
+
+      return indexFileFilter.getMatchingFiles(partitionPath, recordKey).stream()
+          .map(file -> new Tuple2<>(file, new HoodieKey(recordKey, indexToPartitionMap.get(file))))
+          .collect(Collectors.toList());
+    }).flatMap(List::iterator);
+  }
+
+
+  /**
+   * Tagging for global index should only consider the record key
+   */
+  @Override
+  protected JavaRDD<HoodieRecord<T>> tagLocationBacktoRecords(
+      JavaPairRDD<HoodieKey, String> keyFilenamePairRDD, JavaRDD<HoodieRecord<T>> recordRDD) {
+    JavaPairRDD<String, HoodieRecord<T>> rowKeyRecordPairRDD = recordRDD
+        .mapToPair(record -> new Tuple2<>(record.getRecordKey(), record));
+
+    // Here as the recordRDD might have more data than rowKeyRDD (some rowKeys' fileId is null),
+    // so we do left outer join.
+    return rowKeyRecordPairRDD.leftOuterJoin(keyFilenamePairRDD.mapToPair(p -> new Tuple2<>(p._1.getRecordKey(), p._2)))
+        .values().map(value -> getTaggedRecord(value._1, value._2));
+  }
+
+  @Override
+  public boolean isGlobal() {
+    return true;
   }
 }
