@@ -68,7 +68,7 @@ public class EmbeddedTimelineService {
   }
 
   public void startServer() throws IOException {
-    server = new TimelineService(0, viewManager);
+    server = new TimelineService(0, viewManager, hadoopConf.get());
     serverPort = server.startService();
     logger.info("Started embedded timeline server at " + hostAddr + ":" + serverPort);
   }
@@ -89,6 +89,10 @@ public class EmbeddedTimelineService {
   public FileSystemViewStorageConfig getRemoteFileSystemViewConfig() {
     return FileSystemViewStorageConfig.newBuilder().withStorageType(FileSystemViewStorageType.REMOTE_FIRST)
         .withRemoteServerHost(hostAddr).withRemoteServerPort(serverPort).build();
+  }
+
+  public FileSystemViewManager getViewManager() {
+    return viewManager;
   }
 
   public void stop() {
