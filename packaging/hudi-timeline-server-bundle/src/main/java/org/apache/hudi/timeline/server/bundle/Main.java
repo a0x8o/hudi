@@ -16,28 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.utilities.transform;
+package org.apache.hudi.timeline.server.bundle;
 
-import org.apache.hudi.common.util.TypedProperties;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
+import org.apache.hudi.common.util.ReflectionUtils;
 
 /**
- * Transform source to target dataset before writing
+ * A simple main class to dump all classes loaded in current classpath
+ *
+ * This is a workaround for generating sources and javadoc jars for packaging modules. The maven plugins for generating
+ * javadoc and sources plugins do not generate corresponding jars if there are no source files.
+ *
+ * This class does not have anything to do with Hudi but is there to keep mvn javadocs/source plugin happy.
  */
-public interface Transformer {
+public class Main {
 
-  /**
-   * Transform source RDD to target RDD
-   *
-   * @param jsc JavaSparkContext
-   * @param sparkSession Spark Session
-   * @param rowDataset Source DataSet
-   * @param properties Config properties
-   * @return Transformed Dataset
-   */
-  Dataset apply(JavaSparkContext jsc, SparkSession sparkSession,
-      Dataset<Row> rowDataset, TypedProperties properties);
+    public static void main(String[] args) {
+        ReflectionUtils.getTopLevelClassesInClasspath(Main.class).forEach(System.out::println);
+    }
 }

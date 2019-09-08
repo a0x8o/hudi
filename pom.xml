@@ -48,6 +48,7 @@
     <module>packaging/hudi-spark-bundle</module>
     <module>packaging/hudi-presto-bundle</module>
     <module>packaging/hudi-utilities-bundle</module>
+    <module>packaging/hudi-timeline-server-bundle</module>
     <module>docker/hoodie/hadoop</module>
     <module>hudi-integ-test</module>
   </modules>
@@ -201,9 +202,9 @@
           </execution>
         </executions>
         <configuration>
-          <noticeTemplate>file://${maven.multiModuleProjectDirectory}/release/config/NOTICE.template</noticeTemplate>
+          <noticeTemplate>${maven.multiModuleProjectDirectory}/release/config/NOTICE.template</noticeTemplate>
           <licenseMapping>
-            <param>file://${maven.multiModuleProjectDirectory}/release/config/license-mappings.xml</param>
+            <param>${maven.multiModuleProjectDirectory}/release/config/license-mappings.xml</param>
           </licenseMapping>
           <outputDir>${notice.dir}</outputDir>
           <fileName>${notice.file}</fileName>
@@ -702,6 +703,16 @@
         <artifactId>hadoop-common</artifactId>
         <version>${hadoop.version}</version>
         <scope>provided</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>jdk.tools</groupId>
+            <artifactId>jdk.tools</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.hadoop</groupId>
