@@ -1,3 +1,21 @@
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+
 Release 0.5.0-incubating
 ------------------------------------
 
@@ -8,6 +26,22 @@ Release 0.5.0-incubating
  * Bug fixes in query side integration, hive-sync, deltaStreamer, compaction, rollbacks, restore
 
 ### Full PR List
+  * **leesf** [HUDI-285] Implement HoodieStorageWriter based on actual file type
+  * **leesf** [HUDI-265] Failed to delete tmp dirs created in unit tests
+  * **Balaji Varadarajan** [HUDI-287] Address comments during review of release candidate. Remove LICENSE and NOTICE files in hoodie child modules. 
+  * **Balaji Varadarajan** [HUDI-121] Fix bugs in Release Scripts found during RC creation
+  * **Balaji Varadarajan** [HUDI-121] : Address comments during RC2 voting
+  * **Bhavani Sudha Saktheeswaran** [HUDI-271] Create QuickstartUtils for simplifying quickstart guide
+  * **vinoyang** [HUDI-247] Unify the re-initialization of HoodieTableMetaClient in test for hoodie-client module (#930)
+  * **Balaji Varadarajan** [HUDI-279] Fix regression in Schema Evolution due to PR-755
+  * **Xing Pan** [HUDI-269] Limit sync frequency (#921)
+  * **vinoth chandar** [MINOR] : Further updates to .mailmap for vinoth (#919)
+  * **PanXing** [MINOR] support reading cfg file in another s3 bucket (#914)
+  * **vinoyang** HUDI-267 Refactor bad method name HoodieTestUtils#initTableType and HoodieTableMetaClient#initializePathAsHoodieDataset (#916)
+  * **Nishith Agarwal** HUDI-180 : Adding support for hive registration using metastore along with JDBC
+  * **Balaji Varadarajan** Fix  mailmap to allow mapping of defunct emailIds to active emailIds
+  * **Balaji Varadarajan** Adding mailmap to allow mapping of defunct emailIds to active emailIds
+  * **Balaji Varadarajan** Updating release notes and preparing for 0.5.0-incubating-rc2 release
   * **Vinoth Chandar** [HUDI-254]: Bundle and shade databricks/avro with spark bundle
   * **Balaji Varadarajan** [HUDI-257] Fix Bloom Index unit-test failures
   * **Balaji Varadarajan** [HUDI-252] Add Disclaimer and cleanup NOTICE and LICENSE files in hudi. Identify packages which are under non-apache license in LICENSE file
