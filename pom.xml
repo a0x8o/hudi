@@ -100,6 +100,8 @@
     <skipUTs>${skipTests}</skipUTs>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <main.basedir>${project.basedir}</main.basedir>
+    <mr.bundle.avro.scope>provided</mr.bundle.avro.scope>
+    <mr.bundle.avro.shade.prefix></mr.bundle.avro.shade.prefix>
   </properties>
 
   <scm>
@@ -168,6 +170,8 @@
           </execution>
         </executions>
       </plugin>
+<!--
+      See https://jira.apache.org/jira/browse/HUDI-304
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>
@@ -180,13 +184,11 @@
             </eclipse>
           </java>
           <scala>
-            <!--<endWithNewLine/>-->
             <trimTrailingWhitespace/>
           </scala>
         </configuration>
         <executions>
           <execution>
-            <!-- Runs in compile phase to fail fast in case of formatting issues.-->
             <id>spotless-check</id>
             <phase>compile</phase>
             <goals>
@@ -195,6 +197,7 @@
           </execution>
         </executions>
       </plugin>
+-->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -334,6 +337,7 @@
             </licenseFamilies>
             <excludes>
               <exclude>NOTICE</exclude>
+              <exclude>DISCLAIMER-WIP</exclude>
               <exclude>**/.*</exclude>
               <exclude>**/*.json</exclude>
               <exclude>**/*.sqltemplate</exclude>
@@ -343,7 +347,7 @@
               <exclude>**/dependency-reduced-pom.xml</exclude>
               <exclude>**/test/resources/*.data</exclude>
               <exclude>**/target/**</exclude>
-              <excludes>**/generated-sources/**</excludes>
+              <exclude>**/generated-sources/**</exclude>
             </excludes>
           </configuration>
           <executions>
@@ -904,6 +908,13 @@
       </activation>
       <properties>
         <surefire-log4j.file>file://${project.basedir}/src/test/resources/log4j-surefire-quiet.properties</surefire-log4j.file>
+      </properties>
+    </profile>
+    <profile>
+      <id>aws-emr-profile</id>
+      <properties>
+        <mr.bundle.avro.scope>compile</mr.bundle.avro.scope>
+        <mr.bundle.avro.shade.prefix>org.apache.hudi.</mr.bundle.avro.shade.prefix>
       </properties>
     </profile>
   </profiles>
