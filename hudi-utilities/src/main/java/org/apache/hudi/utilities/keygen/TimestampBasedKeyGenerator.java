@@ -18,6 +18,16 @@
 
 package org.apache.hudi.utilities.keygen;
 
+import org.apache.hudi.DataSourceUtils;
+import org.apache.hudi.keygen.SimpleKeyGenerator;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.util.TypedProperties;
+import org.apache.hudi.exception.HoodieKeyException;
+import org.apache.hudi.exception.HoodieNotSupportedException;
+import org.apache.hudi.utilities.exception.HoodieDeltaStreamerException;
+
+import org.apache.avro.generic.GenericRecord;
+
 import java.io.Serializable;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -25,13 +35,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.TimeZone;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.hudi.DataSourceUtils;
-import org.apache.hudi.SimpleKeyGenerator;
-import org.apache.hudi.common.model.HoodieKey;
-import org.apache.hudi.common.util.TypedProperties;
-import org.apache.hudi.exception.HoodieNotSupportedException;
-import org.apache.hudi.utilities.exception.HoodieDeltaStreamerException;
 
 /**
  * Key generator, that relies on timestamps for partitioning field. Still picks record key by name.
@@ -48,18 +51,23 @@ public class TimestampBasedKeyGenerator extends SimpleKeyGenerator {
 
   private final String outputDateFormat;
 
+  // TimeZone detailed settings reference
+  // https://docs.oracle.com/javase/8/docs/api/java/util/TimeZone.html
+  private final TimeZone timeZone;
 
   /**
-   * Supported configs
+   * Supported configs.
    */
   static class Config {
 
     // One value from TimestampType above
-    private static final String TIMESTAMP_TYPE_FIELD_PROP = "hoodie.deltastreamer.keygen" + ".timebased.timestamp.type";
+    private static final String TIMESTAMP_TYPE_FIELD_PROP = "hoodie.deltastreamer.keygen.timebased.timestamp.type";
     private static final String TIMESTAMP_INPUT_DATE_FORMAT_PROP =
-        "hoodie.deltastreamer.keygen" + ".timebased.input" + ".dateformat";
+        "hoodie.deltastreamer.keygen.timebased.input.dateformat";
     private static final String TIMESTAMP_OUTPUT_DATE_FORMAT_PROP =
-        "hoodie.deltastreamer.keygen" + ".timebased.output" + ".dateformat";
+        "hoodie.deltastreamer.keygen.timebased.output.dateformat";
+    private static final String TIMESTAMP_TIMEZONE_FORMAT_PROP =
+            "hoodie.deltastreamer.keygen.timebased.timezone";
   }
 
   public TimestampBasedKeyGenerator(TypedProperties config) {
@@ -68,20 +76,24 @@ public class TimestampBasedKeyGenerator extends SimpleKeyGenerator {
         Arrays.asList(Config.TIMESTAMP_TYPE_FIELD_PROP, Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP));
     this.timestampType = TimestampType.valueOf(config.getString(Config.TIMESTAMP_TYPE_FIELD_PROP));
     this.outputDateFormat = config.getString(Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP);
+    this.timeZone = TimeZone.getTimeZone(config.getString(Config.TIMESTAMP_TIMEZONE_FORMAT_PROP, "GMT"));
 
     if (timestampType == TimestampType.DATE_STRING || timestampType == TimestampType.MIXED) {
       DataSourceUtils.checkRequiredProperties(config,
           Collections.singletonList(Config.TIMESTAMP_INPUT_DATE_FORMAT_PROP));
       this.inputDateFormat = new SimpleDateFormat(config.getString(Config.TIMESTAMP_INPUT_DATE_FORMAT_PROP));
-      this.inputDateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+      this.inputDateFormat.setTimeZone(timeZone);
     }
   }
 
   @Override
   public HoodieKey getKey(GenericRecord record) {
-    Object partitionVal = DataSourceUtils.getNestedFieldVal(record, partitionPathField);
+    Object partitionVal = DataSourceUtils.getNestedFieldVal(record, partitionPathField, true);
+    if (partitionVal == null) {
+      partitionVal = 1L;
+    }
     SimpleDateFormat partitionPathFormat = new SimpleDateFormat(outputDateFormat);
-    partitionPathFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+    partitionPathFormat.setTimeZone(timeZone);
 
     try {
       long unixTime;
@@ -95,12 +107,18 @@ public class TimestampBasedKeyGenerator extends SimpleKeyGenerator {
         unixTime = inputDateFormat.parse(partitionVal.toString()).getTime() / 1000;
       } else {
         throw new HoodieNotSupportedException(
-            "Unexpected type for partition field: " + partitionVal.getClass().getName());
+          "Unexpected type for partition field: " + partitionVal.getClass().getName());
       }
       Date timestamp = this.timestampType == TimestampType.EPOCHMILLISECONDS ? new Date(unixTime) : new Date(unixTime * 1000);
 
-      return new HoodieKey(DataSourceUtils.getNestedFieldValAsString(record, recordKeyField),
-          partitionPathFormat.format(timestamp));
+      String recordKey = DataSourceUtils.getNestedFieldValAsString(record, recordKeyField, true);
+      if (recordKey == null || recordKey.isEmpty()) {
+        throw new HoodieKeyException("recordKey value: \"" + recordKey + "\" for field: \"" + recordKeyField + "\" cannot be null or empty.");
+      }
+
+      String partitionPath = hiveStylePartitioning ? partitionPathField + "=" + partitionPathFormat.format(timestamp)
+              : partitionPathFormat.format(timestamp);
+      return new HoodieKey(recordKey, partitionPath);
     } catch (ParseException pe) {
       throw new HoodieDeltaStreamerException("Unable to parse input partition field :" + partitionVal, pe);
     }

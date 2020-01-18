@@ -18,18 +18,20 @@
 
 package org.apache.hudi.common.table;
 
-import java.io.Serializable;
-import java.util.function.BiPredicate;
-import java.util.function.Predicate;
-import java.util.stream.Stream;
+import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.timeline.HoodieDefaultTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieInstant.State;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 
+import java.io.Serializable;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
+
 /**
- * HoodieTimeline is a view of meta-data instants in the hoodie dataset. Instants are specific points in time
+ * HoodieTimeline is a view of meta-data instants in the hoodie table. Instants are specific points in time
  * represented as HoodieInstant.
  * <p>
  * Timelines are immutable once created and operations create new instance of timelines which filter on the instants and
@@ -61,6 +63,8 @@ public interface HoodieTimeline extends Serializable {
   String SAVEPOINT_EXTENSION = "." + SAVEPOINT_ACTION;
   // this is to preserve backwards compatibility on commit in-flight filenames
   String INFLIGHT_COMMIT_EXTENSION = INFLIGHT_EXTENSION;
+  String REQUESTED_COMMIT_EXTENSION = "." + COMMIT_ACTION + REQUESTED_EXTENSION;
+  String REQUESTED_DELTA_COMMIT_EXTENSION = "." + DELTA_COMMIT_ACTION + REQUESTED_EXTENSION;
   String INFLIGHT_DELTA_COMMIT_EXTENSION = "." + DELTA_COMMIT_ACTION + INFLIGHT_EXTENSION;
   String INFLIGHT_CLEAN_EXTENSION = "." + CLEAN_ACTION + INFLIGHT_EXTENSION;
   String REQUESTED_CLEAN_EXTENSION = "." + CLEAN_ACTION + REQUESTED_EXTENSION;
@@ -75,28 +79,28 @@ public interface HoodieTimeline extends Serializable {
   String INVALID_INSTANT_TS = "0";
 
   /**
-   * Filter this timeline to just include the in-flights
+   * Filter this timeline to just include the in-flights.
    *
    * @return New instance of HoodieTimeline with just in-flights
    */
   HoodieTimeline filterInflights();
 
   /**
-   * Filter this timeline to include requested and in-flights
+   * Filter this timeline to include requested and in-flights.
    *
    * @return New instance of HoodieTimeline with just in-flights and requested instants
    */
   HoodieTimeline filterInflightsAndRequested();
 
   /**
-   * Filter this timeline to just include the in-flights excluding compaction instants
+   * Filter this timeline to just include the in-flights excluding compaction instants.
    *
    * @return New instance of HoodieTimeline with just in-flights excluding compaction inflights
    */
-  HoodieTimeline filterInflightsExcludingCompaction();
+  HoodieTimeline filterPendingExcludingCompaction();
 
   /**
-   * Filter this timeline to just include the completed instants
+   * Filter this timeline to just include the completed instants.
    *
    * @return New instance of HoodieTimeline with just completed instants
    */
@@ -113,36 +117,36 @@ public interface HoodieTimeline extends Serializable {
   HoodieTimeline filterCompletedAndCompactionInstants();
 
   /**
-   * Timeline to just include commits (commit/deltacommit) and compaction actions
+   * Timeline to just include commits (commit/deltacommit) and compaction actions.
    * 
    * @return
    */
   HoodieTimeline getCommitsAndCompactionTimeline();
 
   /**
-   * Filter this timeline to just include requested and inflight compaction instants
+   * Filter this timeline to just include requested and inflight compaction instants.
    * 
    * @return
    */
   HoodieTimeline filterPendingCompactionTimeline();
 
   /**
-   * Create a new Timeline with instants after startTs and before or on endTs
+   * Create a new Timeline with instants after startTs and before or on endTs.
    */
   HoodieTimeline findInstantsInRange(String startTs, String endTs);
 
   /**
-   * Create a new Timeline with all the instants after startTs
+   * Create a new Timeline with all the instants after startTs.
    */
   HoodieTimeline findInstantsAfter(String commitTime, int numCommits);
 
   /**
-   * Custom Filter of Instants
+   * Custom Filter of Instants.
    */
   HoodieTimeline filter(Predicate<HoodieInstant> filter);
 
   /**
-   * If the timeline has any instants
+   * If the timeline has any instants.
    *
    * @return true if timeline is empty
    */
@@ -170,7 +174,7 @@ public interface HoodieTimeline extends Serializable {
 
 
   /**
-   * Get hash of timeline
+   * Get hash of timeline.
    * 
    * @return
    */
@@ -209,12 +213,12 @@ public interface HoodieTimeline extends Serializable {
   boolean isBeforeTimelineStarts(String ts);
 
   /**
-   * Read the completed instant details
+   * Read the completed instant details.
    */
   Option<byte[]> getInstantDetails(HoodieInstant instant);
 
   /**
-   * Helper methods to compare instants
+   * Helper methods to compare instants.
    **/
   BiPredicate<String, String> EQUAL = (commit1, commit2) -> commit1.compareTo(commit2) == 0;
   BiPredicate<String, String> GREATER_OR_EQUAL = (commit1, commit2) -> commit1.compareTo(commit2) >= 0;
@@ -250,7 +254,17 @@ public interface HoodieTimeline extends Serializable {
     return new HoodieInstant(State.INFLIGHT, COMPACTION_ACTION, timestamp);
   }
 
-  static HoodieInstant getInflightInstant(final HoodieInstant instant) {
+  /**
+   * Returns the inflight instant corresponding to the instant being passed. Takes care of changes in action names
+   * between inflight and completed instants (compaction <=> commit).
+   * @param instant Hoodie Instant
+   * @param tableType Hoodie Table Type
+   * @return Inflight Hoodie Instant
+   */
+  static HoodieInstant getInflightInstant(final HoodieInstant instant, final HoodieTableType tableType) {
+    if ((tableType == HoodieTableType.MERGE_ON_READ) && instant.getAction().equals(COMMIT_ACTION)) {
+      return new HoodieInstant(true, COMPACTION_ACTION, instant.getTimestamp());
+    }
     return new HoodieInstant(true, instant.getAction(), instant.getTimestamp());
   }
 
@@ -260,6 +274,10 @@ public interface HoodieTimeline extends Serializable {
 
   static String makeInflightCommitFileName(String commitTime) {
     return StringUtils.join(commitTime, HoodieTimeline.INFLIGHT_COMMIT_EXTENSION);
+  }
+
+  static String makeRequestedCommitFileName(String commitTime) {
+    return StringUtils.join(commitTime, HoodieTimeline.REQUESTED_COMMIT_EXTENSION);
   }
 
   static String makeCleanerFileName(String instant) {
@@ -292,6 +310,10 @@ public interface HoodieTimeline extends Serializable {
 
   static String makeInflightDeltaFileName(String commitTime) {
     return StringUtils.join(commitTime, HoodieTimeline.INFLIGHT_DELTA_COMMIT_EXTENSION);
+  }
+
+  static String makeRequestedDeltaFileName(String commitTime) {
+    return StringUtils.join(commitTime, HoodieTimeline.REQUESTED_DELTA_COMMIT_EXTENSION);
   }
 
   static String makeInflightCompactionFileName(String commitTime) {

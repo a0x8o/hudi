@@ -18,25 +18,10 @@
 
 package org.apache.hudi.common.table;
 
-import com.google.common.base.Preconditions;
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
 import org.apache.hudi.common.SerializableConfiguration;
 import org.apache.hudi.common.io.storage.HoodieWrapperFileSystem;
 import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.model.TimelineLayoutVersion;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieArchivedTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
@@ -44,10 +29,29 @@ import org.apache.hudi.common.util.ConsistencyGuardConfig;
 import org.apache.hudi.common.util.FSUtils;
 import org.apache.hudi.common.util.FailSafeConsistencyGuard;
 import org.apache.hudi.common.util.NoOpConsistencyGuard;
-import org.apache.hudi.exception.DatasetNotFoundException;
+import org.apache.hudi.common.util.Option;
+import org.apache.hudi.exception.TableNotFoundException;
 import org.apache.hudi.exception.HoodieException;
+
+import com.google.common.base.Preconditions;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * <code>HoodieTableMetaClient</code> allows to access meta-data about a hoodie table It returns meta-data about
@@ -62,7 +66,7 @@ import org.apache.log4j.Logger;
  */
 public class HoodieTableMetaClient implements Serializable {
 
-  private static final transient Logger log = LogManager.getLogger(HoodieTableMetaClient.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieTableMetaClient.class);
   public static String METAFOLDER_NAME = ".hoodie";
   public static String TEMPFOLDER_NAME = METAFOLDER_NAME + File.separator + ".temp";
   public static String AUXILIARYFOLDER_NAME = METAFOLDER_NAME + File.separator + ".aux";
@@ -74,23 +78,35 @@ public class HoodieTableMetaClient implements Serializable {
   private boolean loadActiveTimelineOnLoad;
   private SerializableConfiguration hadoopConf;
   private HoodieTableType tableType;
+  private TimelineLayoutVersion timelineLayoutVersion;
   private HoodieTableConfig tableConfig;
   private HoodieActiveTimeline activeTimeline;
   private HoodieArchivedTimeline archivedTimeline;
   private ConsistencyGuardConfig consistencyGuardConfig = ConsistencyGuardConfig.newBuilder().build();
 
-  public HoodieTableMetaClient(Configuration conf, String basePath) throws DatasetNotFoundException {
+  public HoodieTableMetaClient(Configuration conf, String basePath) throws TableNotFoundException {
     // Do not load any timeline by default
     this(conf, basePath, false);
   }
 
-  public HoodieTableMetaClient(Configuration conf, String basePath, boolean loadActiveTimelineOnLoad) {
-    this(conf, basePath, loadActiveTimelineOnLoad, ConsistencyGuardConfig.newBuilder().build());
+  public HoodieTableMetaClient(Configuration conf, String basePath, String payloadClassName) {
+    this(conf, basePath, false, ConsistencyGuardConfig.newBuilder().build(), Option.of(TimelineLayoutVersion.CURR_LAYOUT_VERSION),
+        payloadClassName);
   }
 
   public HoodieTableMetaClient(Configuration conf, String basePath, boolean loadActiveTimelineOnLoad,
-      ConsistencyGuardConfig consistencyGuardConfig) throws DatasetNotFoundException {
-    log.info("Loading HoodieTableMetaClient from " + basePath);
+                               ConsistencyGuardConfig consistencyGuardConfig, Option<TimelineLayoutVersion> layoutVersion) {
+    this(conf, basePath, loadActiveTimelineOnLoad, consistencyGuardConfig, layoutVersion, null);
+  }
+
+  public HoodieTableMetaClient(Configuration conf, String basePath, boolean loadActiveTimelineOnLoad) {
+    this(conf, basePath, loadActiveTimelineOnLoad, ConsistencyGuardConfig.newBuilder().build(), Option.of(TimelineLayoutVersion.CURR_LAYOUT_VERSION), null);
+  }
+
+  public HoodieTableMetaClient(Configuration conf, String basePath, boolean loadActiveTimelineOnLoad,
+      ConsistencyGuardConfig consistencyGuardConfig, Option<TimelineLayoutVersion> layoutVersion, String payloadClassName)
+      throws TableNotFoundException {
+    LOG.info("Loading HoodieTableMetaClient from " + basePath);
     this.basePath = basePath;
     this.consistencyGuardConfig = consistencyGuardConfig;
     this.hadoopConf = new SerializableConfiguration(conf);
@@ -98,19 +114,20 @@ public class HoodieTableMetaClient implements Serializable {
     this.metaPath = new Path(basePath, METAFOLDER_NAME).toString();
     Path metaPathDir = new Path(this.metaPath);
     this.fs = getFs();
-    DatasetNotFoundException.checkValidDataset(fs, basePathDir, metaPathDir);
-    this.tableConfig = new HoodieTableConfig(fs, metaPath);
+    TableNotFoundException.checkTableValidity(fs, basePathDir, metaPathDir);
+    this.tableConfig = new HoodieTableConfig(fs, metaPath, payloadClassName);
     this.tableType = tableConfig.getTableType();
-    log.info("Finished Loading Table of type " + tableType + " from " + basePath);
+    this.timelineLayoutVersion = layoutVersion.orElse(tableConfig.getTimelineLayoutVersion());
     this.loadActiveTimelineOnLoad = loadActiveTimelineOnLoad;
+    LOG.info("Finished Loading Table of type " + tableType + "(version=" + timelineLayoutVersion + ") from " + basePath);
     if (loadActiveTimelineOnLoad) {
-      log.info("Loading Active commit timeline for " + basePath);
+      LOG.info("Loading Active commit timeline for " + basePath);
       getActiveTimeline();
     }
   }
 
   /**
-   * For serailizing and de-serializing
+   * For serailizing and de-serializing.
    *
    * @deprecated
    */
@@ -118,7 +135,8 @@ public class HoodieTableMetaClient implements Serializable {
 
   public static HoodieTableMetaClient reload(HoodieTableMetaClient oldMetaClient) {
     return new HoodieTableMetaClient(oldMetaClient.hadoopConf.get(), oldMetaClient.basePath,
-        oldMetaClient.loadActiveTimelineOnLoad, oldMetaClient.consistencyGuardConfig);
+        oldMetaClient.loadActiveTimelineOnLoad, oldMetaClient.consistencyGuardConfig,
+        Option.of(oldMetaClient.timelineLayoutVersion), null);
   }
 
   /**
@@ -164,7 +182,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Returns Marker folder path
+   * Returns Marker folder path.
    * 
    * @param instantTs Instant Timestamp
    * @return
@@ -199,8 +217,12 @@ public class HoodieTableMetaClient implements Serializable {
     return tableConfig;
   }
 
+  public TimelineLayoutVersion getTimelineLayoutVersion() {
+    return timelineLayoutVersion;
+  }
+
   /**
-   * Get the FS implementation for this table
+   * Get the FS implementation for this table.
    */
   public HoodieWrapperFileSystem getFs() {
     if (fs == null) {
@@ -216,7 +238,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Return raw file-system
+   * Return raw file-system.
    * 
    * @return
    */
@@ -229,7 +251,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Get the active instants as a timeline
+   * Get the active instants as a timeline.
    *
    * @return Active instants timeline
    */
@@ -241,7 +263,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Reload ActiveTimeline and cache
+   * Reload ActiveTimeline and cache.
    *
    * @return Active instants timeline
    */
@@ -256,7 +278,7 @@ public class HoodieTableMetaClient implements Serializable {
 
   /**
    * Get the archived commits as a timeline. This is costly operation, as all data from the archived files are read.
-   * This should not be used, unless for historical debugging purposes
+   * This should not be used, unless for historical debugging purposes.
    *
    * @return Active commit timeline
    */
@@ -267,42 +289,51 @@ public class HoodieTableMetaClient implements Serializable {
     return archivedTimeline;
   }
 
-
   /**
-   * Helper method to initialize a dataset, with given basePath, tableType, name, archiveFolder
+   * Helper method to initialize a table, with given basePath, tableType, name, archiveFolder.
    */
   public static HoodieTableMetaClient initTableType(Configuration hadoopConf, String basePath, String tableType,
-      String tableName, String archiveLogFolder) throws IOException {
-    HoodieTableType type = HoodieTableType.valueOf(tableType);
-    Properties properties = new Properties();
-    properties.put(HoodieTableConfig.HOODIE_TABLE_NAME_PROP_NAME, tableName);
-    properties.put(HoodieTableConfig.HOODIE_TABLE_TYPE_PROP_NAME, type.name());
-    properties.put(HoodieTableConfig.HOODIE_ARCHIVELOG_FOLDER_PROP_NAME, archiveLogFolder);
-    return HoodieTableMetaClient.initDatasetAndGetMetaClient(hadoopConf, basePath, properties);
+      String tableName, String archiveLogFolder, String payloadClassName) throws IOException {
+    return initTableType(hadoopConf, basePath, HoodieTableType.valueOf(tableType), tableName,
+        archiveLogFolder, payloadClassName, null);
   }
 
   /**
-   * Helper method to initialize a given path, as a given storage type and table name
+   * Helper method to initialize a given path, as a given type and table name.
    */
   public static HoodieTableMetaClient initTableType(Configuration hadoopConf, String basePath,
       HoodieTableType tableType, String tableName, String payloadClassName) throws IOException {
+    return initTableType(hadoopConf, basePath, tableType, tableName, null, payloadClassName, null);
+  }
+
+  public static HoodieTableMetaClient initTableType(Configuration hadoopConf, String basePath,
+      HoodieTableType tableType, String tableName, String archiveLogFolder, String payloadClassName,
+      Integer timelineLayoutVersion) throws IOException {
     Properties properties = new Properties();
     properties.setProperty(HoodieTableConfig.HOODIE_TABLE_NAME_PROP_NAME, tableName);
     properties.setProperty(HoodieTableConfig.HOODIE_TABLE_TYPE_PROP_NAME, tableType.name());
-    if (tableType == HoodieTableType.MERGE_ON_READ) {
+    if (tableType == HoodieTableType.MERGE_ON_READ && payloadClassName != null) {
       properties.setProperty(HoodieTableConfig.HOODIE_PAYLOAD_CLASS_PROP_NAME, payloadClassName);
     }
-    return HoodieTableMetaClient.initDatasetAndGetMetaClient(hadoopConf, basePath, properties);
+
+    if (null != archiveLogFolder) {
+      properties.put(HoodieTableConfig.HOODIE_ARCHIVELOG_FOLDER_PROP_NAME, archiveLogFolder);
+    }
+
+    if (null != timelineLayoutVersion) {
+      properties.put(HoodieTableConfig.HOODIE_TIMELINE_LAYOUT_VERSION, String.valueOf(timelineLayoutVersion));
+    }
+    return HoodieTableMetaClient.initTableAndGetMetaClient(hadoopConf, basePath, properties);
   }
 
   /**
-   * Helper method to initialize a given path as a hoodie dataset with configs passed in as as Properties
+   * Helper method to initialize a given path as a hoodie table with configs passed in as as Properties.
    *
    * @return Instance of HoodieTableMetaClient
    */
-  public static HoodieTableMetaClient initDatasetAndGetMetaClient(Configuration hadoopConf, String basePath,
+  public static HoodieTableMetaClient initTableAndGetMetaClient(Configuration hadoopConf, String basePath,
       Properties props) throws IOException {
-    log.info("Initializing " + basePath + " as hoodie dataset " + basePath);
+    LOG.info("Initializing " + basePath + " as hoodie table " + basePath);
     Path basePathDir = new Path(basePath);
     final FileSystem fs = FSUtils.getFs(basePath, hadoopConf);
     if (!fs.exists(basePathDir)) {
@@ -339,7 +370,7 @@ public class HoodieTableMetaClient implements Serializable {
     // We should not use fs.getConf as this might be different from the original configuration
     // used to create the fs in unit tests
     HoodieTableMetaClient metaClient = new HoodieTableMetaClient(hadoopConf, basePath);
-    log.info("Finished initializing Table of type " + metaClient.getTableConfig().getTableType() + " from " + basePath);
+    LOG.info("Finished initializing Table of type " + metaClient.getTableConfig().getTableType() + " from " + basePath);
     return metaClient;
   }
 
@@ -349,7 +380,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Get the commit timeline visible for this table
+   * Get the commit timeline visible for this table.
    */
   public HoodieTimeline getCommitsTimeline() {
     switch (this.getTableType()) {
@@ -357,7 +388,7 @@ public class HoodieTableMetaClient implements Serializable {
         return getActiveTimeline().getCommitTimeline();
       case MERGE_ON_READ:
         // We need to include the parquet files written out in delta commits
-        // Include commit action to be able to start doing a MOR over a COW dataset - no
+        // Include commit action to be able to start doing a MOR over a COW table - no
         // migration required
         return getActiveTimeline().getCommitsTimeline();
       default:
@@ -383,7 +414,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Get the compacted commit timeline visible for this table
+   * Get the compacted commit timeline visible for this table.
    */
   public HoodieTimeline getCommitTimeline() {
     switch (this.getTableType()) {
@@ -397,7 +428,7 @@ public class HoodieTableMetaClient implements Serializable {
   }
 
   /**
-   * Gets the commit action type
+   * Gets the commit action type.
    */
   public String getCommitActionType() {
     switch (this.getTableType()) {
@@ -406,31 +437,48 @@ public class HoodieTableMetaClient implements Serializable {
       case MERGE_ON_READ:
         return HoodieActiveTimeline.DELTA_COMMIT_ACTION;
       default:
-        throw new HoodieException("Could not commit on unknown storage type " + this.getTableType());
+        throw new HoodieException("Could not commit on unknown table type " + this.getTableType());
     }
   }
 
-
   /**
-   * Helper method to scan all hoodie-instant metafiles and construct HoodieInstant objects
+   * Helper method to scan all hoodie-instant metafiles and construct HoodieInstant objects.
    *
-   * @param fs FileSystem
-   * @param metaPath Meta Path where hoodie instants are present
    * @param includedExtensions Included hoodie extensions
+   * @param applyLayoutVersionFilters Depending on Timeline layout version, if there are multiple states for the same
+   * action instant, only include the highest state
    * @return List of Hoodie Instants generated
    * @throws IOException in case of failure
    */
-  public static List<HoodieInstant> scanHoodieInstantsFromFileSystem(FileSystem fs, Path metaPath,
-      Set<String> includedExtensions) throws IOException {
-    return Arrays.stream(HoodieTableMetaClient.scanFiles(fs, metaPath, path -> {
-      // Include only the meta files with extensions that needs to be included
-      String extension = FSUtils.getFileExtension(path.getName());
-      return includedExtensions.contains(extension);
-    })).sorted(Comparator.comparing(
-        // Sort the meta-data by the instant time (first part of the file name)
-        fileStatus -> FSUtils.getInstantTime(fileStatus.getPath().getName())))
-        // create HoodieInstantMarkers from FileStatus, which extracts properties
-        .map(HoodieInstant::new).collect(Collectors.toList());
+  public List<HoodieInstant> scanHoodieInstantsFromFileSystem(Set<String> includedExtensions,
+      boolean applyLayoutVersionFilters) throws IOException {
+    return scanHoodieInstantsFromFileSystem(new Path(metaPath), includedExtensions, applyLayoutVersionFilters);
+  }
+
+  /**
+   * Helper method to scan all hoodie-instant metafiles and construct HoodieInstant objects.
+   *
+   * @param timelinePath MetaPath where instant files are stored
+   * @param includedExtensions Included hoodie extensions
+   * @param applyLayoutVersionFilters Depending on Timeline layout version, if there are multiple states for the same
+   * action instant, only include the highest state
+   * @return List of Hoodie Instants generated
+   * @throws IOException in case of failure
+   */
+  public List<HoodieInstant> scanHoodieInstantsFromFileSystem(Path timelinePath, Set<String> includedExtensions,
+      boolean applyLayoutVersionFilters) throws IOException {
+    Stream<HoodieInstant> instantStream = Arrays.stream(
+        HoodieTableMetaClient
+            .scanFiles(getFs(), timelinePath, path -> {
+              // Include only the meta files with extensions that needs to be included
+              String extension = FSUtils.getFileExtension(path.getName());
+              return includedExtensions.contains(extension);
+            })).map(HoodieInstant::new);
+
+    if (applyLayoutVersionFilters) {
+      instantStream = TimelineLayout.getLayout(getTimelineLayoutVersion()).filterHoodieInstants(instantStream);
+    }
+    return instantStream.sorted().collect(Collectors.toList());
   }
 
   @Override

@@ -18,30 +18,12 @@
 
 package org.apache.hudi.index.bloom;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-import com.google.common.collect.Lists;
-import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.HoodieClientTestHarness;
-import org.apache.hudi.common.BloomFilter;
 import org.apache.hudi.common.HoodieClientTestUtils;
 import org.apache.hudi.common.TestRawTripPayload;
+import org.apache.hudi.common.bloom.filter.BloomFilter;
+import org.apache.hudi.common.bloom.filter.BloomFilterFactory;
+import org.apache.hudi.common.bloom.filter.BloomFilterTypeCode;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
@@ -54,6 +36,10 @@ import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.HoodieKeyLookupHandle;
 import org.apache.hudi.table.HoodieTable;
+
+import com.google.common.collect.Lists;
+import org.apache.avro.Schema;
+import org.apache.hadoop.fs.Path;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.junit.After;
@@ -61,7 +47,26 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import scala.Tuple2;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 @RunWith(Parameterized.class)
 public class TestHoodieBloomIndex extends HoodieClientTestHarness {
@@ -105,12 +110,11 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
   }
 
   private HoodieWriteConfig makeConfig() {
-    HoodieWriteConfig config = HoodieWriteConfig.newBuilder().withPath(basePath)
+    return HoodieWriteConfig.newBuilder().withPath(basePath)
         .withIndexConfig(HoodieIndexConfig.newBuilder().bloomIndexPruneByRanges(rangePruning)
             .bloomIndexTreebasedFilter(treeFiltering).bloomIndexBucketizedChecking(bucketizedChecking)
             .bloomIndexKeysPerBucket(2).build())
         .build();
-    return config;
   }
 
   @Test
@@ -245,7 +249,7 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
 
     // We write record1, record2 to a parquet file, but the bloom filter contains (record1,
     // record2, record3).
-    BloomFilter filter = new BloomFilter(10000, 0.0000001);
+    BloomFilter filter = BloomFilterFactory.createBloomFilter(10000, 0.0000001, -1, BloomFilterTypeCode.SIMPLE.name());
     filter.add(record3.getRecordKey());
     String filename = HoodieClientTestUtils.writeParquetFile(basePath, "2016/01/31", Arrays.asList(record1, record2),
         schema, filter, true);
@@ -273,7 +277,7 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
   }
 
   @Test
-  public void testTagLocationWithEmptyRDD() throws Exception {
+  public void testTagLocationWithEmptyRDD() {
     // We have some records to be tagged (two different partitions)
     JavaRDD<HoodieRecord> recordRDD = jsc.emptyRDD();
     // Also create the metadata and config
@@ -287,10 +291,9 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
     try {
       bloomIndex.tagLocation(recordRDD, jsc, table);
     } catch (IllegalArgumentException e) {
-      fail("EmptyRDD should not result in IllegalArgumentException: Positive number of slices " + "required");
+      fail("EmptyRDD should not result in IllegalArgumentException: Positive number of slices required");
     }
   }
-
 
   @Test
   public void testTagLocation() throws Exception {
@@ -298,11 +301,11 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
     String rowKey1 = UUID.randomUUID().toString();
     String rowKey2 = UUID.randomUUID().toString();
     String rowKey3 = UUID.randomUUID().toString();
-    String recordStr1 = "{\"_row_key\":\"" + rowKey1 + "\"," + "\"time\":\"2016-01-31T03:16:41.415Z\",\"number\":12}";
-    String recordStr2 = "{\"_row_key\":\"" + rowKey2 + "\"," + "\"time\":\"2016-01-31T03:20:41.415Z\",\"number\":100}";
-    String recordStr3 = "{\"_row_key\":\"" + rowKey3 + "\"," + "\"time\":\"2016-01-31T03:16:41.415Z\",\"number\":15}";
+    String recordStr1 = "{\"_row_key\":\"" + rowKey1 + "\",\"time\":\"2016-01-31T03:16:41.415Z\",\"number\":12}";
+    String recordStr2 = "{\"_row_key\":\"" + rowKey2 + "\",\"time\":\"2016-01-31T03:20:41.415Z\",\"number\":100}";
+    String recordStr3 = "{\"_row_key\":\"" + rowKey3 + "\",\"time\":\"2016-01-31T03:16:41.415Z\",\"number\":15}";
     // place same row key under a different partition.
-    String recordStr4 = "{\"_row_key\":\"" + rowKey1 + "\"," + "\"time\":\"2015-01-31T03:16:41.415Z\",\"number\":32}";
+    String recordStr4 = "{\"_row_key\":\"" + rowKey1 + "\",\"time\":\"2015-01-31T03:16:41.415Z\",\"number\":32}";
     TestRawTripPayload rowChange1 = new TestRawTripPayload(recordStr1);
     HoodieRecord record1 =
         new HoodieRecord(new HoodieKey(rowChange1.getRowKey(), rowChange1.getPartitionPath()), rowChange1);
@@ -433,7 +436,6 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
     }
   }
 
-
   @Test
   public void testBloomFilterFalseError() throws IOException, InterruptedException {
     // We have two hoodie records
@@ -450,7 +452,8 @@ public class TestHoodieBloomIndex extends HoodieClientTestHarness {
     HoodieRecord record2 =
         new HoodieRecord(new HoodieKey(rowChange2.getRowKey(), rowChange2.getPartitionPath()), rowChange2);
 
-    BloomFilter filter = new BloomFilter(10000, 0.0000001);
+    BloomFilter filter = BloomFilterFactory.createBloomFilter(10000, 0.0000001, -1,
+        BloomFilterTypeCode.SIMPLE.name());
     filter.add(record2.getRecordKey());
     String filename =
         HoodieClientTestUtils.writeParquetFile(basePath, "2016/01/31", Arrays.asList(record1), schema, filter, true);

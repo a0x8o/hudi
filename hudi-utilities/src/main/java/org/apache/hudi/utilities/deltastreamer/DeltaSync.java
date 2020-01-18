@@ -18,29 +18,10 @@
 
 package org.apache.hudi.utilities.deltastreamer;
 
-import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_NAMESPACE;
-import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_STRUCT_NAME;
-
-import com.codahale.metrics.Timer;
-import com.google.common.base.Preconditions;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Objects;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hudi.AvroConversionUtils;
 import org.apache.hudi.DataSourceUtils;
 import org.apache.hudi.HoodieWriteClient;
-import org.apache.hudi.KeyGenerator;
+import org.apache.hudi.keygen.KeyGenerator;
 import org.apache.hudi.WriteStatus;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -66,6 +47,15 @@ import org.apache.hudi.utilities.schema.RowBasedSchemaProvider;
 import org.apache.hudi.utilities.schema.SchemaProvider;
 import org.apache.hudi.utilities.sources.InputBatch;
 import org.apache.hudi.utilities.transform.Transformer;
+
+import com.codahale.metrics.Timer;
+import com.google.common.base.Preconditions;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaRDD;
@@ -73,25 +63,37 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import scala.collection.JavaConversions;
 
+import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_NAMESPACE;
+import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_STRUCT_NAME;
 
 /**
- * Sync's one batch of data to hoodie dataset
+ * Sync's one batch of data to hoodie table.
  */
 public class DeltaSync implements Serializable {
 
-  protected static volatile Logger log = LogManager.getLogger(DeltaSync.class);
+  private static final Logger LOG = LogManager.getLogger(DeltaSync.class);
   public static String CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
   public static String CHECKPOINT_RESET_KEY = "deltastreamer.checkpoint.reset_key";
 
   /**
-   * Delta Sync Config
+   * Delta Sync Config.
    */
   private final HoodieDeltaStreamer.Config cfg;
 
   /**
-   * Source to pull deltas from
+   * Source to pull deltas from.
    */
   private transient SourceFormatAdapter formatAdapter;
 
@@ -101,32 +103,32 @@ public class DeltaSync implements Serializable {
   private transient SchemaProvider schemaProvider;
 
   /**
-   * Allows transforming source to target dataset before writing
+   * Allows transforming source to target table before writing.
    */
   private transient Transformer transformer;
 
   /**
-   * Extract the key for the target dataset
+   * Extract the key for the target table.
    */
   private KeyGenerator keyGenerator;
 
   /**
-   * Filesystem used
+   * Filesystem used.
    */
   private transient FileSystem fs;
 
   /**
-   * Spark context
+   * Spark context.
    */
   private transient JavaSparkContext jssc;
 
   /**
-   * Spark Session
+   * Spark Session.
    */
   private transient SparkSession sparkSession;
 
   /**
-   * Hive Config
+   * Hive Config.
    */
   private transient HiveConf hiveConf;
 
@@ -136,29 +138,28 @@ public class DeltaSync implements Serializable {
   private final TypedProperties props;
 
   /**
-   * Callback when write client is instantiated
+   * Callback when write client is instantiated.
    */
   private transient Function<HoodieWriteClient, Boolean> onInitializingHoodieWriteClient;
 
   /**
-   * Timeline with completed commits
+   * Timeline with completed commits.
    */
   private transient Option<HoodieTimeline> commitTimelineOpt;
 
   /**
-   * Write Client
+   * Write Client.
    */
   private transient HoodieWriteClient writeClient;
 
   /**
-   * Table Type
+   * Table Type.
    */
   private final HoodieTableType tableType;
 
-
   public DeltaSync(HoodieDeltaStreamer.Config cfg, SparkSession sparkSession, SchemaProvider schemaProvider,
-      HoodieTableType tableType, TypedProperties props, JavaSparkContext jssc, FileSystem fs, HiveConf hiveConf,
-      Function<HoodieWriteClient, Boolean> onInitializingHoodieWriteClient) throws IOException {
+                   HoodieTableType tableType, TypedProperties props, JavaSparkContext jssc, FileSystem fs, HiveConf hiveConf,
+                   Function<HoodieWriteClient, Boolean> onInitializingHoodieWriteClient) throws IOException {
 
     this.cfg = cfg;
     this.jssc = jssc;
@@ -167,7 +168,7 @@ public class DeltaSync implements Serializable {
     this.tableType = tableType;
     this.onInitializingHoodieWriteClient = onInitializingHoodieWriteClient;
     this.props = props;
-    log.info("Creating delta streamer with configs : " + props.toString());
+    LOG.info("Creating delta streamer with configs : " + props.toString());
     this.schemaProvider = schemaProvider;
 
     refreshTimeline();
@@ -188,21 +189,31 @@ public class DeltaSync implements Serializable {
   }
 
   /**
-   * Refresh Timeline
+   * Refresh Timeline.
    */
   private void refreshTimeline() throws IOException {
     if (fs.exists(new Path(cfg.targetBasePath))) {
-      HoodieTableMetaClient meta = new HoodieTableMetaClient(new Configuration(fs.getConf()), cfg.targetBasePath);
-      this.commitTimelineOpt = Option.of(meta.getActiveTimeline().getCommitsTimeline().filterCompletedInstants());
+      HoodieTableMetaClient meta = new HoodieTableMetaClient(new Configuration(fs.getConf()), cfg.targetBasePath,
+          cfg.payloadClassName);
+      switch (meta.getTableType()) {
+        case COPY_ON_WRITE:
+          this.commitTimelineOpt = Option.of(meta.getActiveTimeline().getCommitTimeline().filterCompletedInstants());
+          break;
+        case MERGE_ON_READ:
+          this.commitTimelineOpt = Option.of(meta.getActiveTimeline().getDeltaCommitTimeline().filterCompletedInstants());
+          break;
+        default:
+          throw new HoodieException("Unsupported table type :" + meta.getTableType());
+      }
     } else {
       this.commitTimelineOpt = Option.empty();
       HoodieTableMetaClient.initTableType(new Configuration(jssc.hadoopConfiguration()), cfg.targetBasePath,
-          cfg.storageType, cfg.targetTableName, "archived");
+          cfg.tableType, cfg.targetTableName, "archived", cfg.payloadClassName);
     }
   }
 
   /**
-   * Run one round of delta sync and return new compaction instant if one got scheduled
+   * Run one round of delta sync and return new compaction instant if one got scheduled.
    */
   public Option<String> syncOnce() throws Exception {
     Option<String> scheduledCompaction = Option.empty();
@@ -234,7 +245,7 @@ public class DeltaSync implements Serializable {
   }
 
   /**
-   * Read from Upstream Source and apply transformation if needed
+   * Read from Upstream Source and apply transformation if needed.
    */
   private Pair<SchemaProvider, Pair<String, JavaRDD<HoodieRecord>>> readFromSource(
       Option<HoodieTimeline> commitTimelineOpt) throws Exception {
@@ -259,13 +270,13 @@ public class DeltaSync implements Serializable {
       }
     } else {
       HoodieTableMetaClient.initTableType(new Configuration(jssc.hadoopConfiguration()), cfg.targetBasePath,
-          cfg.storageType, cfg.targetTableName, "archived");
+          cfg.tableType, cfg.targetTableName, "archived", cfg.payloadClassName);
     }
 
     if (!resumeCheckpointStr.isPresent() && cfg.checkpoint != null) {
       resumeCheckpointStr = Option.of(cfg.checkpoint);
     }
-    log.info("Checkpoint to resume from : " + resumeCheckpointStr);
+    LOG.info("Checkpoint to resume from : " + resumeCheckpointStr);
 
     final Option<JavaRDD<GenericRecord>> avroRDDOptional;
     final String checkpointStr;
@@ -287,7 +298,7 @@ public class DeltaSync implements Serializable {
       // default to RowBasedSchemaProvider
       schemaProvider = this.schemaProvider == null || this.schemaProvider.getTargetSchema() == null
           ? transformed.map(r -> (SchemaProvider) new RowBasedSchemaProvider(r.schema())).orElse(
-              dataAndCheckpoint.getSchemaProvider())
+          dataAndCheckpoint.getSchemaProvider())
           : this.schemaProvider;
     } else {
       // Pull the data from the source & prepare the write
@@ -299,38 +310,38 @@ public class DeltaSync implements Serializable {
     }
 
     if (Objects.equals(checkpointStr, resumeCheckpointStr.orElse(null))) {
-      log.info("No new data, source checkpoint has not changed. Nothing to commit." + "Old checkpoint=("
+      LOG.info("No new data, source checkpoint has not changed. Nothing to commit. Old checkpoint=("
           + resumeCheckpointStr + "). New Checkpoint=(" + checkpointStr + ")");
       return null;
     }
 
     if ((!avroRDDOptional.isPresent()) || (avroRDDOptional.get().isEmpty())) {
-      log.info("No new data, perform empty commit.");
+      LOG.info("No new data, perform empty commit.");
       return Pair.of(schemaProvider, Pair.of(checkpointStr, jssc.emptyRDD()));
     }
 
     JavaRDD<GenericRecord> avroRDD = avroRDDOptional.get();
     JavaRDD<HoodieRecord> records = avroRDD.map(gr -> {
       HoodieRecordPayload payload = DataSourceUtils.createPayload(cfg.payloadClassName, gr,
-          (Comparable) DataSourceUtils.getNestedFieldVal(gr, cfg.sourceOrderingField));
+          (Comparable) DataSourceUtils.getNestedFieldVal(gr, cfg.sourceOrderingField, false));
       return new HoodieRecord<>(keyGenerator.getKey(gr), payload);
     });
+
     return Pair.of(schemaProvider, Pair.of(checkpointStr, records));
   }
 
   /**
-   * Perform Hoodie Write. Run Cleaner, schedule compaction and syncs to hive if needed
+   * Perform Hoodie Write. Run Cleaner, schedule compaction and syncs to hive if needed.
    *
-   * @param records Input Records
+   * @param records       Input Records
    * @param checkpointStr Checkpoint String
-   * @param metrics Metrics
+   * @param metrics       Metrics
    * @return Option Compaction instant if one is scheduled
    */
   private Option<String> writeToSink(JavaRDD<HoodieRecord> records, String checkpointStr,
-      HoodieDeltaStreamerMetrics metrics, Timer.Context overallTimerContext) throws Exception {
+                                     HoodieDeltaStreamerMetrics metrics, Timer.Context overallTimerContext) throws Exception {
 
     Option<String> scheduledCompactionInstant = Option.empty();
-
     // filter dupes if needed
     if (cfg.filterDupes) {
       // turn upserts to insert
@@ -341,7 +352,7 @@ public class DeltaSync implements Serializable {
     boolean isEmpty = records.isEmpty();
 
     String commitTime = startCommit();
-    log.info("Starting commit  : " + commitTime);
+    LOG.info("Starting commit  : " + commitTime);
 
     JavaRDD<WriteStatus> writeStatusRDD;
     if (cfg.operation == Operation.INSERT) {
@@ -366,17 +377,17 @@ public class DeltaSync implements Serializable {
       }
 
       if (hasErrors) {
-        log.warn("Some records failed to be merged but forcing commit since commitOnErrors set. Errors/Total="
+        LOG.warn("Some records failed to be merged but forcing commit since commitOnErrors set. Errors/Total="
             + totalErrorRecords + "/" + totalRecords);
       }
 
       boolean success = writeClient.commit(commitTime, writeStatusRDD, Option.of(checkpointCommitMetadata));
       if (success) {
-        log.info("Commit " + commitTime + " successful!");
+        LOG.info("Commit " + commitTime + " successful!");
 
         // Schedule compaction if needed
         if (cfg.isAsyncCompactionEnabled()) {
-          scheduledCompactionInstant = writeClient.scheduleCompaction(Option.of(checkpointCommitMetadata));
+          scheduledCompactionInstant = writeClient.scheduleCompaction(Option.empty());
         }
 
         if (!isEmpty) {
@@ -386,16 +397,16 @@ public class DeltaSync implements Serializable {
           hiveSyncTimeMs = hiveSyncContext != null ? hiveSyncContext.stop() : 0;
         }
       } else {
-        log.info("Commit " + commitTime + " failed!");
+        LOG.info("Commit " + commitTime + " failed!");
         throw new HoodieException("Commit " + commitTime + " failed!");
       }
     } else {
-      log.error("Delta Sync found errors when writing. Errors/Total=" + totalErrorRecords + "/" + totalRecords);
-      log.error("Printing out the top 100 errors");
+      LOG.error("Delta Sync found errors when writing. Errors/Total=" + totalErrorRecords + "/" + totalRecords);
+      LOG.error("Printing out the top 100 errors");
       writeStatusRDD.filter(ws -> ws.hasErrors()).take(100).forEach(ws -> {
-        log.error("Global error :", ws.getGlobalError());
+        LOG.error("Global error :", ws.getGlobalError());
         if (ws.getErrors().size() > 0) {
-          ws.getErrors().entrySet().forEach(r -> log.trace("Error for key:" + r.getKey() + " is " + r.getValue()));
+          ws.getErrors().entrySet().forEach(r -> LOG.trace("Error for key:" + r.getKey() + " is " + r.getValue()));
         }
       });
       // Rolling back instant
@@ -419,7 +430,7 @@ public class DeltaSync implements Serializable {
         return writeClient.startCommit();
       } catch (IllegalArgumentException ie) {
         lastException = ie;
-        log.error("Got error trying to start a new commit. Retrying after sleeping for a sec", ie);
+        LOG.error("Got error trying to start a new commit. Retrying after sleeping for a sec", ie);
         retryNum++;
         try {
           Thread.sleep(1000);
@@ -432,12 +443,12 @@ public class DeltaSync implements Serializable {
   }
 
   /**
-   * Sync to Hive
+   * Sync to Hive.
    */
   private void syncHive() throws ClassNotFoundException {
     if (cfg.enableHiveSync) {
       HiveSyncConfig hiveSyncConfig = DataSourceUtils.buildHiveSyncConfig(props, cfg.targetBasePath);
-      log.info("Syncing target hoodie table with hive table(" + hiveSyncConfig.tableName + "). Hive metastore URL :"
+      LOG.info("Syncing target hoodie table with hive table(" + hiveSyncConfig.tableName + "). Hive metastore URL :"
           + hiveSyncConfig.jdbcUrl + ", basePath :" + cfg.targetBasePath);
 
       new HiveSyncTool(hiveSyncConfig, hiveConf, fs).syncHoodieTable();
@@ -450,7 +461,7 @@ public class DeltaSync implements Serializable {
    * this constraint.
    */
   public void setupWriteClient() {
-    log.info("Setting up Hoodie Write Client");
+    LOG.info("Setting up Hoodie Write Client");
     if ((null != schemaProvider) && (null == writeClient)) {
       registerAvroSchemas(schemaProvider);
       HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
@@ -460,7 +471,7 @@ public class DeltaSync implements Serializable {
   }
 
   /**
-   * Helper to construct Write Client config
+   * Helper to construct Write Client config.
    *
    * @param schemaProvider Schema Provider
    */
@@ -489,7 +500,7 @@ public class DeltaSync implements Serializable {
   }
 
   /**
-   * Register Avro Schemas
+   * Register Avro Schemas.
    *
    * @param schemaProvider Schema Provider
    */
@@ -502,13 +513,13 @@ public class DeltaSync implements Serializable {
         schemas.add(schemaProvider.getTargetSchema());
       }
 
-      log.info("Registering Schema :" + schemas);
+      LOG.info("Registering Schema :" + schemas);
       jssc.sc().getConf().registerAvroSchemas(JavaConversions.asScalaBuffer(schemas).toList());
     }
   }
 
   /**
-   * Close all resources
+   * Close all resources.
    */
   public void close() {
     if (null != writeClient) {

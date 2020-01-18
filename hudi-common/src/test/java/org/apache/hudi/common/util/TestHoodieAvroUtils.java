@@ -18,17 +18,20 @@
 
 package org.apache.hudi.common.util;
 
-import java.util.Map;
 import org.apache.avro.Schema;
 import org.codehaus.jackson.JsonNode;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Map;
 
+/**
+ * Tests hoodie avro utilities.
+ */
 public class TestHoodieAvroUtils {
 
-  private static String EXAMPLE_SCHEMA = "{\"type\": \"record\"," + "\"name\": \"testrec\"," + "\"fields\": [ "
-      + "{\"name\": \"timestamp\",\"type\": \"double\"}," + "{\"name\": \"_row_key\", \"type\": \"string\"},"
+  private static String EXAMPLE_SCHEMA = "{\"type\": \"record\",\"name\": \"testrec\",\"fields\": [ "
+      + "{\"name\": \"timestamp\",\"type\": \"double\"},{\"name\": \"_row_key\", \"type\": \"string\"},"
       + "{\"name\": \"non_pii_col\", \"type\": \"string\"},"
       + "{\"name\": \"pii_col\", \"type\": \"string\", \"column_category\": \"user_profile\"}]}";
 
@@ -41,15 +44,15 @@ public class TestHoodieAvroUtils {
         continue;
       }
 
-      Assert.assertTrue("field name is null", field.name() != null);
+      Assert.assertNotNull("field name is null", field.name());
       Map<String, JsonNode> props = field.getJsonProps();
-      Assert.assertTrue("The property is null", props != null);
+      Assert.assertNotNull("The property is null", props);
 
       if (field.name().equals("pii_col")) {
         piiPresent = true;
         Assert.assertTrue("sensitivity_level is removed in field 'pii_col'", props.containsKey("column_category"));
       } else {
-        Assert.assertTrue("The property shows up but not set", props.size() == 0);
+        Assert.assertEquals("The property shows up but not set", 0, props.size());
       }
     }
     Assert.assertTrue("column pii_col doesn't show up", piiPresent);

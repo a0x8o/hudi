@@ -18,7 +18,6 @@
 
 package org.apache.hudi.index;
 
-import java.io.Serializable;
 import org.apache.hudi.WriteStatus;
 import org.apache.hudi.common.model.FileSlice;
 import org.apache.hudi.common.model.HoodieKey;
@@ -32,12 +31,15 @@ import org.apache.hudi.index.bloom.HoodieBloomIndex;
 import org.apache.hudi.index.bloom.HoodieGlobalBloomIndex;
 import org.apache.hudi.index.hbase.HBaseIndex;
 import org.apache.hudi.table.HoodieTable;
+
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import java.io.Serializable;
+
 /**
- * Base class for different types of indexes to determine the mapping from uuid
+ * Base class for different types of indexes to determine the mapping from uuid.
  */
 public abstract class HoodieIndex<T extends HoodieRecordPayload> implements Serializable {
 
@@ -46,7 +48,6 @@ public abstract class HoodieIndex<T extends HoodieRecordPayload> implements Seri
   protected HoodieIndex(HoodieWriteConfig config) {
     this.config = config;
   }
-
 
   public static <T extends HoodieRecordPayload> HoodieIndex<T> createIndex(HoodieWriteConfig config,
       JavaSparkContext jsc) throws HoodieIndexException {
@@ -73,7 +74,7 @@ public abstract class HoodieIndex<T extends HoodieRecordPayload> implements Seri
 
   /**
    * Looks up the index and tags each incoming record with a location of a file that contains the row (if it is actually
-   * present)
+   * present).
    */
   public abstract JavaRDD<HoodieRecord<T>> tagLocation(JavaRDD<HoodieRecord<T>> recordRDD, JavaSparkContext jsc,
       HoodieTable<T> hoodieTable) throws HoodieIndexException;
@@ -107,7 +108,6 @@ public abstract class HoodieIndex<T extends HoodieRecordPayload> implements Seri
    * @return Returns true/false depending on whether the impl has this capability
    */
   public abstract boolean canIndexLogFiles();
-
 
   /**
    * An index is "implicit" with respect to storage, if just writing new data to a file slice, updates the index as

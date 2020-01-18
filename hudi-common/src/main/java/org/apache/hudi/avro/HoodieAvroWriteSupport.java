@@ -18,12 +18,15 @@
 
 package org.apache.hudi.avro;
 
-import java.util.HashMap;
+import org.apache.hudi.common.bloom.filter.BloomFilter;
+import org.apache.hudi.common.bloom.filter.HoodieDynamicBoundedBloomFilter;
+
 import org.apache.avro.Schema;
-import org.apache.hudi.common.BloomFilter;
 import org.apache.parquet.avro.AvroWriteSupport;
 import org.apache.parquet.hadoop.api.WriteSupport;
 import org.apache.parquet.schema.MessageType;
+
+import java.util.HashMap;
 
 /**
  * Wrap AvroWriterSupport for plugging in the bloom filter.
@@ -38,7 +41,7 @@ public class HoodieAvroWriteSupport extends AvroWriteSupport {
   public static final String HOODIE_AVRO_BLOOM_FILTER_METADATA_KEY = "org.apache.hudi.bloomfilter";
   public static final String HOODIE_MIN_RECORD_KEY_FOOTER = "hoodie_min_record_key";
   public static final String HOODIE_MAX_RECORD_KEY_FOOTER = "hoodie_max_record_key";
-
+  public static final String HOODIE_BLOOM_FILTER_TYPE_CODE = "hoodie_bloom_filter_type_code";
 
   public HoodieAvroWriteSupport(MessageType schema, Schema avroSchema, BloomFilter bloomFilter) {
     super(schema, avroSchema);
@@ -53,6 +56,9 @@ public class HoodieAvroWriteSupport extends AvroWriteSupport {
       if (minRecordKey != null && maxRecordKey != null) {
         extraMetaData.put(HOODIE_MIN_RECORD_KEY_FOOTER, minRecordKey);
         extraMetaData.put(HOODIE_MAX_RECORD_KEY_FOOTER, maxRecordKey);
+      }
+      if (bloomFilter.getBloomFilterTypeCode().name().contains(HoodieDynamicBoundedBloomFilter.TYPE_CODE_PREFIX)) {
+        extraMetaData.put(HOODIE_BLOOM_FILTER_TYPE_CODE, bloomFilter.getBloomFilterTypeCode().name());
       }
     }
     return new WriteSupport.FinalizedWriteContext(extraMetaData);

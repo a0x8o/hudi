@@ -18,12 +18,24 @@
 
 package org.apache.hudi.common.util;
 
-import static org.apache.hudi.common.model.HoodieTestUtils.DEFAULT_PARTITION_PATHS;
-import static org.apache.hudi.common.table.HoodieTimeline.COMPACTION_ACTION;
-import static org.apache.hudi.common.table.HoodieTimeline.DELTA_COMMIT_ACTION;
+import org.apache.hudi.avro.model.HoodieCompactionOperation;
+import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.common.model.FileSlice;
+import org.apache.hudi.common.model.HoodieBaseFile;
+import org.apache.hudi.common.model.HoodieFileGroupId;
+import org.apache.hudi.common.model.HoodieLogFile;
+import org.apache.hudi.common.model.HoodieTestUtils;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieInstant;
+import org.apache.hudi.common.table.timeline.HoodieInstant.State;
+import org.apache.hudi.common.util.collection.Pair;
+import org.apache.hudi.exception.HoodieIOException;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import org.apache.hadoop.fs.Path;
+import org.junit.Assert;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -33,21 +45,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.hadoop.fs.Path;
-import org.apache.hudi.avro.model.HoodieCompactionOperation;
-import org.apache.hudi.avro.model.HoodieCompactionPlan;
-import org.apache.hudi.common.model.FileSlice;
-import org.apache.hudi.common.model.HoodieDataFile;
-import org.apache.hudi.common.model.HoodieFileGroupId;
-import org.apache.hudi.common.model.HoodieLogFile;
-import org.apache.hudi.common.model.HoodieTestUtils;
-import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.table.timeline.HoodieInstant;
-import org.apache.hudi.common.table.timeline.HoodieInstant.State;
-import org.apache.hudi.common.util.collection.Pair;
-import org.apache.hudi.exception.HoodieIOException;
-import org.junit.Assert;
 
+import static org.apache.hudi.common.model.HoodieTestUtils.DEFAULT_PARTITION_PATHS;
+import static org.apache.hudi.common.table.HoodieTimeline.COMPACTION_ACTION;
+import static org.apache.hudi.common.table.HoodieTimeline.DELTA_COMMIT_ACTION;
+
+/**
+ * The utility class to support testing compaction.
+ */
 public class CompactionTestUtils {
 
   private static String TEST_WRITE_TOKEN = "1-0-1";
@@ -123,9 +128,12 @@ public class CompactionTestUtils {
         AvroUtils.serializeCompactionPlan(compactionPlan));
   }
 
-  public static void createDeltaCommit(HoodieTableMetaClient metaClient, String instantTime) throws IOException {
-    metaClient.getActiveTimeline().saveAsComplete(new HoodieInstant(State.INFLIGHT, DELTA_COMMIT_ACTION, instantTime),
-        Option.empty());
+  public static void createDeltaCommit(HoodieTableMetaClient metaClient, String instantTime) {
+    HoodieInstant requested = new HoodieInstant(State.REQUESTED, DELTA_COMMIT_ACTION, instantTime);
+    metaClient.getActiveTimeline().createNewInstant(requested);
+    metaClient.getActiveTimeline().transitionRequestedToInflight(requested, Option.empty());
+    metaClient.getActiveTimeline().saveAsComplete(
+        new HoodieInstant(State.INFLIGHT, DELTA_COMMIT_ACTION, instantTime), Option.empty());
   }
 
   public static void scheduleInflightCompaction(HoodieTableMetaClient metaClient, String instantTime,
@@ -149,7 +157,7 @@ public class CompactionTestUtils {
             instantId, fileId, Option.of(2));
         FileSlice slice = new FileSlice(DEFAULT_PARTITION_PATHS[0], instantId, fileId);
         if (createDataFile) {
-          slice.setDataFile(new TestHoodieDataFile(metaClient.getBasePath() + "/" + DEFAULT_PARTITION_PATHS[0] + "/"
+          slice.setBaseFile(new TestHoodieBaseFile(metaClient.getBasePath() + "/" + DEFAULT_PARTITION_PATHS[0] + "/"
               + FSUtils.makeDataFileName(instantId, TEST_WRITE_TOKEN, fileId)));
         }
         String logFilePath1 = HoodieTestUtils.getLogFilePath(metaClient.getBasePath(), DEFAULT_PARTITION_PATHS[0],
@@ -175,11 +183,14 @@ public class CompactionTestUtils {
         CompactionUtils.LATEST_COMPACTION_METADATA_VERSION);
   }
 
-  public static class TestHoodieDataFile extends HoodieDataFile {
+  /**
+   * The hoodie data file for testing.
+   */
+  public static class TestHoodieBaseFile extends HoodieBaseFile {
 
     private final String path;
 
-    public TestHoodieDataFile(String path) {
+    public TestHoodieBaseFile(String path) {
       super(path);
       this.path = path;
     }

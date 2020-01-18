@@ -18,19 +18,22 @@
 
 package org.apache.hudi.config;
 
+import org.apache.hudi.common.model.HoodieCleaningPolicy;
+import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
+import org.apache.hudi.io.compact.strategy.CompactionStrategy;
+import org.apache.hudi.io.compact.strategy.LogFileSizeBasedCompactionStrategy;
+
 import com.google.common.base.Preconditions;
+
+import javax.annotation.concurrent.Immutable;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Properties;
-import javax.annotation.concurrent.Immutable;
-import org.apache.hudi.common.model.HoodieAvroPayload;
-import org.apache.hudi.common.model.HoodieCleaningPolicy;
-import org.apache.hudi.io.compact.strategy.CompactionStrategy;
-import org.apache.hudi.io.compact.strategy.LogFileSizeBasedCompactionStrategy;
 
 /**
- * Compaction related config
+ * Compaction related config.
  */
 @Immutable
 public class HoodieCompactionConfig extends DefaultHoodieConfig {
@@ -40,8 +43,8 @@ public class HoodieCompactionConfig extends DefaultHoodieConfig {
   // Turn on inline compaction - after fw delta commits a inline compaction will be run
   public static final String INLINE_COMPACT_PROP = "hoodie.compact.inline";
   // Run a compaction every N delta commits
-  public static final String INLINE_COMPACT_NUM_DELTA_COMMITS_PROP = "hoodie.compact.inline.max" + ".delta.commits";
-  public static final String CLEANER_FILE_VERSIONS_RETAINED_PROP = "hoodie.cleaner.fileversions" + ".retained";
+  public static final String INLINE_COMPACT_NUM_DELTA_COMMITS_PROP = "hoodie.compact.inline.max.delta.commits";
+  public static final String CLEANER_FILE_VERSIONS_RETAINED_PROP = "hoodie.cleaner.fileversions.retained";
   public static final String CLEANER_COMMITS_RETAINED_PROP = "hoodie.cleaner.commits.retained";
   public static final String CLEANER_INCREMENTAL_MODE = "hoodie.cleaner.incremental.mode";
   public static final String MAX_COMMITS_TO_KEEP_PROP = "hoodie.keep.max.commits";
@@ -52,21 +55,21 @@ public class HoodieCompactionConfig extends DefaultHoodieConfig {
   // By default, treat any file <= 100MB as a small file.
   public static final String DEFAULT_PARQUET_SMALL_FILE_LIMIT_BYTES = String.valueOf(104857600);
   /**
-   * Configs related to specific table types
-   **/
+   * Configs related to specific table types.
+   */
   // Number of inserts, that will be put each partition/bucket for writing
-  public static final String COPY_ON_WRITE_TABLE_INSERT_SPLIT_SIZE = "hoodie.copyonwrite.insert" + ".split.size";
+  public static final String COPY_ON_WRITE_TABLE_INSERT_SPLIT_SIZE = "hoodie.copyonwrite.insert.split.size";
   // The rationale to pick the insert parallelism is the following. Writing out 100MB files,
   // with atleast 1kb records, means 100K records per file. we just overprovision to 500K
   public static final String DEFAULT_COPY_ON_WRITE_TABLE_INSERT_SPLIT_SIZE = String.valueOf(500000);
   // Config to control whether we control insert split sizes automatically based on average
   // record sizes
-  public static final String COPY_ON_WRITE_TABLE_AUTO_SPLIT_INSERTS = "hoodie.copyonwrite.insert" + ".auto.split";
+  public static final String COPY_ON_WRITE_TABLE_AUTO_SPLIT_INSERTS = "hoodie.copyonwrite.insert.auto.split";
   // its off by default
   public static final String DEFAULT_COPY_ON_WRITE_TABLE_AUTO_SPLIT_INSERTS = String.valueOf(true);
-  // This value is used as a guessimate for the record size, if we can't determine this from
+  // This value is used as a guesstimate for the record size, if we can't determine this from
   // previous commits
-  public static final String COPY_ON_WRITE_TABLE_RECORD_SIZE_ESTIMATE = "hoodie.copyonwrite" + ".record.size.estimate";
+  public static final String COPY_ON_WRITE_TABLE_RECORD_SIZE_ESTIMATE = "hoodie.copyonwrite.record.size.estimate";
   // Used to determine how much more can be packed into a small file, before it exceeds the size
   // limit.
   public static final String DEFAULT_COPY_ON_WRITE_TABLE_RECORD_SIZE_ESTIMATE = String.valueOf(1024);
@@ -79,16 +82,16 @@ public class HoodieCompactionConfig extends DefaultHoodieConfig {
   // 200GB of target IO per compaction
   public static final String DEFAULT_COMPACTION_STRATEGY = LogFileSizeBasedCompactionStrategy.class.getName();
   // used to merge records written to log file
-  public static final String DEFAULT_PAYLOAD_CLASS = HoodieAvroPayload.class.getName();
+  public static final String DEFAULT_PAYLOAD_CLASS = OverwriteWithLatestAvroPayload.class.getName();
   public static final String PAYLOAD_CLASS_PROP = "hoodie.compaction.payload.class";
 
   // used to choose a trade off between IO vs Memory when performing compaction process
   // Depending on outputfile_size and memory provided, choose true to avoid OOM for large file
   // size + small memory
-  public static final String COMPACTION_LAZY_BLOCK_READ_ENABLED_PROP = "hoodie.compaction.lazy" + ".block.read";
+  public static final String COMPACTION_LAZY_BLOCK_READ_ENABLED_PROP = "hoodie.compaction.lazy.block.read";
   public static final String DEFAULT_COMPACTION_LAZY_BLOCK_READ_ENABLED = "false";
   // used to choose whether to enable reverse log reading (reverse log traversal)
-  public static final String COMPACTION_REVERSE_LOG_READ_ENABLED_PROP = "hoodie.compaction" + ".reverse.log.read";
+  public static final String COMPACTION_REVERSE_LOG_READ_ENABLED_PROP = "hoodie.compaction.reverse.log.read";
   public static final String DEFAULT_COMPACTION_REVERSE_LOG_READ_ENABLED = "false";
   private static final String DEFAULT_CLEANER_POLICY = HoodieCleaningPolicy.KEEP_LATEST_COMMITS.name();
   private static final String DEFAULT_AUTO_CLEAN = "true";
@@ -101,7 +104,7 @@ public class HoodieCompactionConfig extends DefaultHoodieConfig {
   private static final String DEFAULT_MIN_COMMITS_TO_KEEP = "20";
   private static final String DEFAULT_COMMITS_ARCHIVAL_BATCH_SIZE = String.valueOf(10);
   public static final String TARGET_PARTITIONS_PER_DAYBASED_COMPACTION_PROP =
-      "hoodie.compaction.daybased.target" + ".partitions";
+      "hoodie.compaction.daybased.target.partitions";
   // 500GB of target IO per compaction (both read and write)
   public static final String DEFAULT_TARGET_PARTITIONS_PER_DAYBASED_COMPACTION = String.valueOf(10);
 
@@ -131,7 +134,6 @@ public class HoodieCompactionConfig extends DefaultHoodieConfig {
       this.props.putAll(props);
       return this;
     }
-
 
     public Builder withAutoClean(Boolean autoClean) {
       props.setProperty(AUTO_CLEAN_PROP, String.valueOf(autoClean));

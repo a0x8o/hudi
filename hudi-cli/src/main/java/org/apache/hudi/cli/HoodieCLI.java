@@ -18,13 +18,21 @@
 
 package org.apache.hudi.cli;
 
-import java.io.IOException;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
+import org.apache.hudi.common.model.TimelineLayoutVersion;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.util.ConsistencyGuardConfig;
 import org.apache.hudi.common.util.FSUtils;
+import org.apache.hudi.common.util.Option;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+
+import java.io.IOException;
+
+
+/**
+ * This class is responsible to load table metadata and hoodie related configs.
+ */
 public class HoodieCLI {
 
   public static Configuration conf;
@@ -32,12 +40,15 @@ public class HoodieCLI {
   public static FileSystem fs;
   public static CLIState state = CLIState.INIT;
   public static String basePath;
-  public static HoodieTableMetaClient tableMetadata;
+  protected static HoodieTableMetaClient tableMetadata;
   public static HoodieTableMetaClient syncTableMetadata;
+  public static TimelineLayoutVersion layoutVersion;
 
-
+  /**
+   * Enum for CLI state.
+   */
   public enum CLIState {
-    INIT, DATASET, SYNC
+    INIT, TABLE, SYNC
   }
 
   public static void setConsistencyGuardConfig(ConsistencyGuardConfig config) {
@@ -50,6 +61,11 @@ public class HoodieCLI {
 
   private static void setBasePath(String basePath) {
     HoodieCLI.basePath = basePath;
+  }
+
+  private static void setLayoutVersion(Integer layoutVersion) {
+    HoodieCLI.layoutVersion = new TimelineLayoutVersion(
+        (layoutVersion == null) ? TimelineLayoutVersion.CURR_VERSION : layoutVersion);
   }
 
   public static boolean initConf() {
@@ -67,11 +83,26 @@ public class HoodieCLI {
   }
 
   public static void refreshTableMetadata() {
-    setTableMetaClient(new HoodieTableMetaClient(HoodieCLI.conf, basePath, false, HoodieCLI.consistencyGuardConfig));
+    setTableMetaClient(new HoodieTableMetaClient(HoodieCLI.conf, basePath, false, HoodieCLI.consistencyGuardConfig,
+        Option.of(layoutVersion)));
   }
 
-  public static void connectTo(String basePath) {
+  public static void connectTo(String basePath, Integer layoutVersion) {
     setBasePath(basePath);
+    setLayoutVersion(layoutVersion);
     refreshTableMetadata();
   }
+
+  /**
+   * Get tableMetadata, throw NullPointerException when it is null.
+   *
+   * @return tableMetadata which is instance of HoodieTableMetaClient
+   */
+  public static HoodieTableMetaClient getTableMetaClient() {
+    if (tableMetadata == null) {
+      throw new NullPointerException("There is no hudi table. Please use connect command to set table first");
+    }
+    return tableMetadata;
+  }
+
 }

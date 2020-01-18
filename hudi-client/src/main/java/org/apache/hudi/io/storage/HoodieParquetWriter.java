@@ -18,22 +18,24 @@
 
 package org.apache.hudi.io.storage;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicLong;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.HoodieAvroWriteSupport;
 import org.apache.hudi.common.io.storage.HoodieWrapperFileSystem;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.util.FSUtils;
 import org.apache.hudi.common.util.HoodieAvroUtils;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.spark.TaskContext;
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * HoodieParquetWriter extends the ParquetWriter to help limit the size of underlying file. Provides a way to check if
@@ -50,7 +52,6 @@ public class HoodieParquetWriter<T extends HoodieRecordPayload, R extends Indexe
   private final HoodieAvroWriteSupport writeSupport;
   private final String commitTime;
   private final Schema schema;
-
 
   public HoodieParquetWriter(String commitTime, Path file, HoodieParquetConfig parquetConfig, Schema schema)
       throws IOException {
@@ -92,6 +93,7 @@ public class HoodieParquetWriter<T extends HoodieRecordPayload, R extends Indexe
     writeSupport.add(record.getRecordKey());
   }
 
+  @Override
   public boolean canWrite() {
     return fs.getBytesWritten(file) < maxFileSize;
   }

@@ -18,19 +18,6 @@
 
 package org.apache.hudi.common.util.collection;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.hudi.common.HoodieCommonTestHarness;
 import org.apache.hudi.common.model.HoodieAvroPayload;
 import org.apache.hudi.common.model.HoodieKey;
@@ -43,11 +30,29 @@ import org.apache.hudi.common.util.HoodieRecordSizeEstimator;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.SchemaTestUtil;
 import org.apache.hudi.common.util.SpillableMapTestUtils;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 import org.junit.Before;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Tests external spillable map {@link ExternalSpillableMap}.
+ */
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class TestExternalSpillableMap extends HoodieCommonTestHarness {
 
@@ -82,7 +87,6 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
   public void testSimpleUpsert() throws IOException, URISyntaxException {
 
     Schema schema = HoodieAvroUtils.addMetadataFields(SchemaTestUtil.getSimpleSchema());
-    String payloadClazz = HoodieAvroPayload.class.getName();
 
     ExternalSpillableMap<String, HoodieRecord<? extends HoodieRecordPayload>> records =
         new ExternalSpillableMap<>(16L, basePath, new DefaultSizeEstimator(), new HoodieRecordSizeEstimator(schema)); // 16B
@@ -96,7 +100,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
       assert recordKeys.contains(rec.getRecordKey());
     }
     List<IndexedRecord> updatedRecords = SchemaTestUtil.updateHoodieTestRecords(recordKeys,
-        SchemaTestUtil.generateHoodieTestRecords(0, 100), HoodieActiveTimeline.createNewCommitTime());
+        SchemaTestUtil.generateHoodieTestRecords(0, 100), HoodieActiveTimeline.createNewInstantTime());
 
     // update records already inserted
     SpillableMapTestUtils.upsertRecords(updatedRecords, records);
@@ -105,7 +109,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
     assertTrue(records.getDiskBasedMapNumEntries() > 0);
 
     // iterate over the updated records and compare the value from Map
-    updatedRecords.stream().forEach(record -> {
+    updatedRecords.forEach(record -> {
       HoodieRecord rec = records.get(((GenericRecord) record).get(HoodieRecord.RECORD_KEY_METADATA_FIELD));
       try {
         assertEquals(rec.getData().getInsertValue(schema).get(), record);
@@ -191,7 +195,6 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
   public void testDataCorrectnessWithUpsertsToDataInMapAndOnDisk() throws IOException, URISyntaxException {
 
     Schema schema = HoodieAvroUtils.addMetadataFields(SchemaTestUtil.getSimpleSchema());
-    String payloadClazz = HoodieAvroPayload.class.getName();
 
     ExternalSpillableMap<String, HoodieRecord<? extends HoodieRecordPayload>> records =
         new ExternalSpillableMap<>(16L, basePath, new DefaultSizeEstimator(), new HoodieRecordSizeEstimator(schema)); // 16B
@@ -209,7 +212,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
     List<IndexedRecord> recordsToUpdate = new ArrayList<>();
     recordsToUpdate.add((IndexedRecord) record.getData().getInsertValue(schema).get());
 
-    String newCommitTime = HoodieActiveTimeline.createNewCommitTime();
+    String newCommitTime = HoodieActiveTimeline.createNewInstantTime();
     List<String> keysToBeUpdated = new ArrayList<>();
     keysToBeUpdated.add(key);
     // Update the commitTime for this record
@@ -227,7 +230,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
     recordsToUpdate = new ArrayList<>();
     recordsToUpdate.add((IndexedRecord) record.getData().getInsertValue(schema).get());
 
-    newCommitTime = HoodieActiveTimeline.createNewCommitTime();
+    newCommitTime = HoodieActiveTimeline.createNewInstantTime();
     keysToBeUpdated = new ArrayList<>();
     keysToBeUpdated.add(key);
     // Update the commitTime for this record
@@ -243,7 +246,6 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
   public void testDataCorrectnessWithoutHoodieMetadata() throws IOException, URISyntaxException {
 
     Schema schema = SchemaTestUtil.getSimpleSchema();
-    String payloadClazz = HoodieAvroPayload.class.getName();
 
     ExternalSpillableMap<String, HoodieRecord<? extends HoodieRecordPayload>> records =
         new ExternalSpillableMap<>(16L, basePath, new DefaultSizeEstimator(), new HoodieRecordSizeEstimator(schema)); // 16B
@@ -273,7 +275,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
         SchemaTestUtil.updateHoodieTestRecordsWithoutHoodieMetadata(recordsToUpdate, schema, fieldName, newValue);
 
     // Upsert this updated record
-    updatedRecords.stream().forEach(r -> {
+    updatedRecords.forEach(r -> {
       records.put(r.getRecordKey(), r);
     });
     GenericRecord gRecord = (GenericRecord) records.get(key).getData().getInsertValue(schema).get();
@@ -295,7 +297,7 @@ public class TestExternalSpillableMap extends HoodieCommonTestHarness {
         SchemaTestUtil.updateHoodieTestRecordsWithoutHoodieMetadata(recordsToUpdate, schema, fieldName, newValue);
 
     // Upsert this updated record
-    updatedRecords.stream().forEach(r -> {
+    updatedRecords.forEach(r -> {
       records.put(r.getRecordKey(), r);
     });
     gRecord = (GenericRecord) records.get(key).getData().getInsertValue(schema).get();

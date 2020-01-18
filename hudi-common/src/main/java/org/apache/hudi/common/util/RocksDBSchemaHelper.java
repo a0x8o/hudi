@@ -18,17 +18,18 @@
 
 package org.apache.hudi.common.util;
 
-import java.util.Arrays;
-import java.util.List;
 import org.apache.hudi.common.model.FileSlice;
 import org.apache.hudi.common.model.HoodieFileGroup;
 import org.apache.hudi.common.model.HoodieFileGroupId;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * Helper class to generate Key and column names for rocksdb based view
  *
- * For RocksDB, 3 colFamilies are used for storing file-system view for each dataset. (a) View (b) Partitions Cached (c)
+ * For RocksDB, 3 colFamilies are used for storing file-system view for each table. (a) View (b) Partitions Cached (c)
  * Pending Compactions
  *
  *

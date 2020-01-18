@@ -18,14 +18,16 @@
 
 package org.apache.hudi.utilities;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-
-import java.util.Map;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer;
 import org.apache.hudi.utilities.deltastreamer.SchedulerConfGenerator;
+
 import org.junit.Test;
+
+import java.util.Map;
+
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 public class TestSchedulerConfGenerator {
 
@@ -41,12 +43,12 @@ public class TestSchedulerConfGenerator {
     assertNull("continuousMode is false", configs.get(SchedulerConfGenerator.SPARK_SCHEDULER_ALLOCATION_FILE_KEY));
 
     cfg.continuousMode = true;
-    cfg.storageType = HoodieTableType.COPY_ON_WRITE.name();
+    cfg.tableType = HoodieTableType.COPY_ON_WRITE.name();
     configs = SchedulerConfGenerator.getSparkSchedulingConfigs(cfg);
-    assertNull("storageType is not MERGE_ON_READ",
+    assertNull("table type is not MERGE_ON_READ",
         configs.get(SchedulerConfGenerator.SPARK_SCHEDULER_ALLOCATION_FILE_KEY));
 
-    cfg.storageType = HoodieTableType.MERGE_ON_READ.name();
+    cfg.tableType = HoodieTableType.MERGE_ON_READ.name();
     configs = SchedulerConfGenerator.getSparkSchedulingConfigs(cfg);
     assertNotNull("all satisfies", configs.get(SchedulerConfGenerator.SPARK_SCHEDULER_ALLOCATION_FILE_KEY));
   }

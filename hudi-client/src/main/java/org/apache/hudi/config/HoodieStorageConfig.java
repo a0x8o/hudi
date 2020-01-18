@@ -18,14 +18,15 @@
 
 package org.apache.hudi.config;
 
+import javax.annotation.concurrent.Immutable;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Properties;
-import javax.annotation.concurrent.Immutable;
 
 /**
- * Storage related config
+ * Storage related config.
  */
 @Immutable
 public class HoodieStorageConfig extends DefaultHoodieConfig {
@@ -65,12 +66,9 @@ public class HoodieStorageConfig extends DefaultHoodieConfig {
     private final Properties props = new Properties();
 
     public Builder fromFile(File propertiesFile) throws IOException {
-      FileReader reader = new FileReader(propertiesFile);
-      try {
+      try (FileReader reader = new FileReader(propertiesFile)) {
         this.props.load(reader);
         return this;
-      } finally {
-        reader.close();
       }
     }
 

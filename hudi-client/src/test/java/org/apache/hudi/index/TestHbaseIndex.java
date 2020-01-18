@@ -18,23 +18,6 @@
 
 package org.apache.hudi.index;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.anyObject;
-import static org.mockito.Mockito.atMost;
-import static org.mockito.Mockito.times;
-
-import java.util.Arrays;
-import java.util.List;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hudi.HoodieClientTestHarness;
 import org.apache.hudi.HoodieWriteClient;
 import org.apache.hudi.WriteStatus;
@@ -52,6 +35,17 @@ import org.apache.hudi.index.hbase.HBaseIndex;
 import org.apache.hudi.index.hbase.HBaseIndex.HbasePutBatchSizeCalculator;
 import org.apache.hudi.index.hbase.HBaseIndexQPSResourceAllocator;
 import org.apache.hudi.table.HoodieTable;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseTestingUtility;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.spark.api.java.JavaRDD;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -62,7 +56,18 @@ import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
 import org.mockito.Mockito;
+
+import java.util.Arrays;
+import java.util.List;
+
 import scala.Tuple2;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyObject;
+import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.times;
 
 /**
  * Note :: HBaseTestingUtility is really flaky with issues where the HbaseMiniCluster fails to shutdown across tests,
@@ -76,7 +81,7 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
   private static Configuration hbaseConfig;
   private static String tableName = "test_table";
 
-  public TestHbaseIndex() throws Exception {}
+  public TestHbaseIndex() {}
 
   @AfterClass
   public static void clean() throws Exception {
@@ -128,7 +133,6 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
     HoodieWriteConfig config = getConfig();
     HBaseIndex index = new HBaseIndex(config);
     try (HoodieWriteClient writeClient = getWriteClient(config);) {
-      writeClient.startCommit();
       metaClient = HoodieTableMetaClient.reload(metaClient);
       HoodieTable hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
 
@@ -137,6 +141,7 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
       assert (javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size() == 0);
 
       // Insert 200 records
+      writeClient.startCommitWithTime(newCommitTime);
       JavaRDD<WriteStatus> writeStatues = writeClient.upsert(writeRecords, newCommitTime);
       assertNoWriteErrors(writeStatues.collect());
 
@@ -151,10 +156,10 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
       metaClient = HoodieTableMetaClient.reload(metaClient);
       hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
       javaRDD = index.tagLocation(writeRecords, jsc, hoodieTable);
-      assertTrue(javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size() == 200);
-      assertTrue(javaRDD.map(record -> record.getKey().getRecordKey()).distinct().count() == 200);
-      assertTrue(javaRDD.filter(record -> (record.getCurrentLocation() != null
-          && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count() == 200);
+      assertEquals(200, javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size());
+      assertEquals(200, javaRDD.map(record -> record.getKey().getRecordKey()).distinct().count());
+      assertEquals(200, javaRDD.filter(record -> (record.getCurrentLocation() != null
+          && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count());
     }
   }
 
@@ -168,13 +173,19 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
     HoodieWriteConfig config = getConfig();
     HBaseIndex index = new HBaseIndex(config);
     HoodieWriteClient writeClient = new HoodieWriteClient(jsc, config);
-    writeClient.startCommit();
+    writeClient.startCommitWithTime(newCommitTime);
     metaClient = HoodieTableMetaClient.reload(metaClient);
     HoodieTable hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
 
     JavaRDD<WriteStatus> writeStatues = writeClient.upsert(writeRecords, newCommitTime);
     JavaRDD<HoodieRecord> javaRDD1 = index.tagLocation(writeRecords, jsc, hoodieTable);
+
     // Duplicate upsert and ensure correctness is maintained
+    // We are trying to approximately imitate the case when the RDD is recomputed. For RDD creating, driver code is not
+    // recomputed. This includes the state transitions. We need to delete the inflight instance so that subsequent
+    // upsert will not run into conflicts.
+    metaClient.getFs().delete(new Path(metaClient.getMetaPath(), "001.inflight"));
+
     writeClient.upsert(writeRecords, newCommitTime);
     assertNoWriteErrors(writeStatues.collect());
 
@@ -184,10 +195,10 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
     metaClient = HoodieTableMetaClient.reload(metaClient);
     hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
     JavaRDD<HoodieRecord> javaRDD = index.tagLocation(writeRecords, jsc, hoodieTable);
-    assertTrue(javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size() == 10);
-    assertTrue(javaRDD.map(record -> record.getKey().getRecordKey()).distinct().count() == 10);
-    assertTrue(javaRDD.filter(record -> (record.getCurrentLocation() != null
-        && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count() == 10);
+    assertEquals(10, javaRDD.filter(HoodieRecord::isCurrentLocationKnown).collect().size());
+    assertEquals(10, javaRDD.map(record -> record.getKey().getRecordKey()).distinct().count());
+    assertEquals(10, javaRDD.filter(record -> (record.getCurrentLocation() != null
+        && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count());
   }
 
   @Test
@@ -201,7 +212,6 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
     List<HoodieRecord> records = dataGen.generateInserts(newCommitTime, 200);
     JavaRDD<HoodieRecord> writeRecords = jsc.parallelize(records, 1);
     metaClient = HoodieTableMetaClient.reload(metaClient);
-    HoodieTable hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
 
     // Insert 200 records
     JavaRDD<WriteStatus> writeStatues = writeClient.upsert(writeRecords, newCommitTime);
@@ -209,13 +219,13 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
 
     // commit this upsert
     writeClient.commit(newCommitTime, writeStatues);
-    hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
+    HoodieTable hoodieTable = HoodieTable.getHoodieTable(metaClient, config, jsc);
     // Now tagLocation for these records, hbaseIndex should tag them
     JavaRDD<HoodieRecord> javaRDD = index.tagLocation(writeRecords, jsc, hoodieTable);
-    assert (javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size() == 200);
+    assert (javaRDD.filter(HoodieRecord::isCurrentLocationKnown).collect().size() == 200);
 
     // check tagged records are tagged with correct fileIds
-    List<String> fileIds = writeStatues.map(status -> status.getFileId()).collect();
+    List<String> fileIds = writeStatues.map(WriteStatus::getFileId).collect();
     assert (javaRDD.filter(record -> record.getCurrentLocation().getFileId() == null).collect().size() == 0);
     List<String> taggedFileIds = javaRDD.map(record -> record.getCurrentLocation().getFileId()).distinct().collect();
 
@@ -228,7 +238,7 @@ public class TestHbaseIndex extends HoodieClientTestHarness {
     // Now tagLocation for these records, hbaseIndex should not tag them since it was a rolled
     // back commit
     javaRDD = index.tagLocation(writeRecords, jsc, hoodieTable);
-    assert (javaRDD.filter(record -> record.isCurrentLocationKnown()).collect().size() == 0);
+    assert (javaRDD.filter(HoodieRecord::isCurrentLocationKnown).collect().size() == 0);
     assert (javaRDD.filter(record -> record.getCurrentLocation() != null).collect().size() == 0);
   }
 

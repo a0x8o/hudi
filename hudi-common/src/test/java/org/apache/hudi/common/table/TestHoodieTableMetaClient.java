@@ -18,28 +18,33 @@
 
 package org.apache.hudi.common.table;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
-import com.google.common.collect.Lists;
-import java.io.IOException;
-import java.util.stream.Collectors;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IOUtils;
-import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.Text;
 import org.apache.hudi.common.HoodieCommonTestHarness;
 import org.apache.hudi.common.model.HoodieTestUtils;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieArchivedTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.util.Option;
+
+import com.google.common.collect.Lists;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Tests hoodie table meta client {@link HoodieTableMetaClient}.
+ */
 public class TestHoodieTableMetaClient extends HoodieCommonTestHarness {
 
   @Before
@@ -56,14 +61,14 @@ public class TestHoodieTableMetaClient extends HoodieCommonTestHarness {
   }
 
   @Test
-  public void checkSerDe() throws IOException, ClassNotFoundException {
+  public void checkSerDe() {
     // check if this object is serialized and de-serialized, we are able to read from the file system
     HoodieTableMetaClient deseralizedMetaClient =
         HoodieTestUtils.serializeDeserialize(metaClient, HoodieTableMetaClient.class);
     assertNotNull(deseralizedMetaClient);
     HoodieActiveTimeline commitTimeline = deseralizedMetaClient.getActiveTimeline();
     HoodieInstant instant = new HoodieInstant(true, HoodieTimeline.COMMIT_ACTION, "1");
-    commitTimeline.createInflight(instant);
+    commitTimeline.createNewInstant(instant);
     commitTimeline.saveAsComplete(instant, Option.of("test-detail".getBytes()));
     commitTimeline = commitTimeline.reload();
     HoodieInstant completedInstant = HoodieTimeline.getCompletedInstant(instant);
@@ -73,13 +78,13 @@ public class TestHoodieTableMetaClient extends HoodieCommonTestHarness {
   }
 
   @Test
-  public void checkCommitTimeline() throws IOException {
+  public void checkCommitTimeline() {
     HoodieActiveTimeline activeTimeline = metaClient.getActiveTimeline();
     HoodieTimeline activeCommitTimeline = activeTimeline.getCommitTimeline();
     assertTrue("Should be empty commit timeline", activeCommitTimeline.empty());
 
     HoodieInstant instant = new HoodieInstant(true, HoodieTimeline.COMMIT_ACTION, "1");
-    activeTimeline.createInflight(instant);
+    activeTimeline.createNewInstant(instant);
     activeTimeline.saveAsComplete(instant, Option.of("test-detail".getBytes()));
 
     // Commit timeline should not auto-reload every time getActiveCommitTimeline(), it should be cached
@@ -122,6 +127,5 @@ public class TestHoodieTableMetaClient extends HoodieCommonTestHarness {
     assertArrayEquals(new Text("data2").getBytes(), archivedTimeline.getInstantDetails(instant2).get());
     assertArrayEquals(new Text("data3").getBytes(), archivedTimeline.getInstantDetails(instant3).get());
   }
-
 
 }

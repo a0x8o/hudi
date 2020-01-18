@@ -18,21 +18,23 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.hudi.common.util.FSUtils;
+
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import java.io.IOException;
 import java.io.Serializable;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.hudi.common.util.FSUtils;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
 
 /**
  * All the metadata that gets stored along with a commit.
@@ -40,7 +42,8 @@ import org.apache.log4j.Logger;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HoodieCommitMetadata implements Serializable {
 
-  private static volatile Logger log = LogManager.getLogger(HoodieCommitMetadata.class);
+  public static final String SCHEMA_KEY = "schema";
+  private static final Logger LOG = LogManager.getLogger(HoodieCommitMetadata.class);
   protected Map<String, List<HoodieWriteStat>> partitionToWriteStats;
   protected Boolean compacted;
 
@@ -115,7 +118,7 @@ public class HoodieCommitMetadata implements Serializable {
 
   public String toJsonString() throws IOException {
     if (partitionToWriteStats.containsKey(null)) {
-      log.info("partition path is null for " + partitionToWriteStats.get(null));
+      LOG.info("partition path is null for " + partitionToWriteStats.get(null));
       partitionToWriteStats.remove(null);
     }
     return getObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(this);
@@ -172,7 +175,8 @@ public class HoodieCommitMetadata implements Serializable {
     long totalInsertRecordsWritten = 0;
     for (List<HoodieWriteStat> stats : partitionToWriteStats.values()) {
       for (HoodieWriteStat stat : stats) {
-        if (stat.getPrevCommit() != null && stat.getPrevCommit().equalsIgnoreCase("null")) {
+        // determine insert rows in every file
+        if (stat.getPrevCommit() != null) {
           totalInsertRecordsWritten += stat.getNumInserts();
         }
       }
@@ -323,7 +327,7 @@ public class HoodieCommitMetadata implements Serializable {
 
   public static <T> T fromBytes(byte[] bytes, Class<T> clazz) throws IOException {
     try {
-      return fromJsonString(new String(bytes, Charset.forName("utf-8")), clazz);
+      return fromJsonString(new String(bytes, StandardCharsets.UTF_8), clazz);
     } catch (Exception e) {
       throw new IOException("unable to read commit metadata", e);
     }
@@ -338,7 +342,7 @@ public class HoodieCommitMetadata implements Serializable {
 
   @Override
   public String toString() {
-    return "HoodieCommitMetadata{" + "partitionToWriteStats=" + partitionToWriteStats + ", compacted=" + compacted
+    return "HoodieCommitMetadata{partitionToWriteStats=" + partitionToWriteStats + ", compacted=" + compacted
         + ", extraMetadataMap=" + extraMetadataMap + '}';
   }
 }

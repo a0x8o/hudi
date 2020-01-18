@@ -18,33 +18,6 @@
 
 package org.apache.hudi.common.table.log;
 
-import static org.apache.hudi.common.util.SchemaTestUtil.getSimpleSchema;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-import com.google.common.collect.Maps;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.common.HoodieCommonTestHarness;
 import org.apache.hudi.common.minicluster.MiniClusterUtil;
 import org.apache.hudi.common.model.HoodieArchivedLogFile;
@@ -57,7 +30,6 @@ import org.apache.hudi.common.table.log.HoodieLogFormat.Reader;
 import org.apache.hudi.common.table.log.HoodieLogFormat.Writer;
 import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
 import org.apache.hudi.common.table.log.block.HoodieCommandBlock;
-import org.apache.hudi.common.table.log.block.HoodieCorruptBlock;
 import org.apache.hudi.common.table.log.block.HoodieDeleteBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock.HeaderMetadataType;
@@ -67,6 +39,14 @@ import org.apache.hudi.common.util.HoodieAvroUtils;
 import org.apache.hudi.common.util.SchemaTestUtil;
 import org.apache.hudi.exception.CorruptedLogFileException;
 
+import com.google.common.collect.Maps;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -75,6 +55,29 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.apache.hudi.common.util.SchemaTestUtil.getSimpleSchema;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+/**
+ * Tests hoodie log format {@link HoodieLogFormat}.
+ */
 @SuppressWarnings("Duplicates")
 @RunWith(Parameterized.class)
 public class TestHoodieLogFormat extends HoodieCommonTestHarness {
@@ -306,7 +309,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
    *       writer.getCurrentSize(); assertTrue("We just wrote a new block - size2 should be > size1", size2 > size1);
    *       assertEquals("Write should be auto-flushed. The size reported by FileStatus and the writer should match",
    *       size2, fs.getFileStatus(writer.getLogFile().getPath()).getLen()); writer.close(); }
-   **/
+   */
 
   @Test
   public void testAppendNotSupported() throws IOException, URISyntaxException, InterruptedException {
@@ -467,10 +470,9 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     }
 
     assertEquals("Scanner records count should be the same as appended records", scannedRecords.size(),
-        allRecords.stream().flatMap(records -> records.stream()).collect(Collectors.toList()).size());
+        allRecords.stream().mapToLong(Collection::size).sum());
 
   }
-
 
   @Test
   public void testAppendAndReadOnCorruptedLog() throws IOException, URISyntaxException, InterruptedException {
@@ -493,7 +495,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     // Write out a length that does not confirm with the content
     outputStream.writeLong(1000);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     // Write out a length that does not confirm with the content
     outputStream.writeLong(500);
     // Write out some bytes
@@ -508,8 +510,6 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     assertTrue("We should have corrupted block next", reader.hasNext());
     HoodieLogBlock block = reader.next();
     assertEquals("The read block should be a corrupt block", HoodieLogBlockType.CORRUPT_BLOCK, block.getBlockType());
-    HoodieCorruptBlock corruptBlock = (HoodieCorruptBlock) block;
-    // assertEquals("", "something-random", new String(corruptBlock.getCorruptedBytes()));
     assertFalse("There should be no more block left", reader.hasNext());
 
     reader.close();
@@ -521,7 +521,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     // Write out a length that does not confirm with the content
     outputStream.writeLong(1000);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     // Write out a length that does not confirm with the content
     outputStream.writeLong(500);
     // Write out some bytes
@@ -548,14 +548,11 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     assertTrue("We should get the 2nd corrupted block next", reader.hasNext());
     block = reader.next();
     assertEquals("The read block should be a corrupt block", HoodieLogBlockType.CORRUPT_BLOCK, block.getBlockType());
-    corruptBlock = (HoodieCorruptBlock) block;
-    // assertEquals("", "something-else-random", new String(corruptBlock.getCorruptedBytes()));
     assertTrue("We should get the last block next", reader.hasNext());
     reader.next();
     assertFalse("We should have no more blocks left", reader.hasNext());
     reader.close();
   }
-
 
   @Test
   public void testAvroLogRecordReaderBasic() throws IOException, URISyntaxException, InterruptedException {
@@ -692,7 +689,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     // Write out a length that does not confirm with the content
     outputStream.writeLong(1000);
 
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
 
     // Write out some header
@@ -815,7 +812,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     header.put(HoodieLogBlock.HeaderMetadataType.COMMAND_BLOCK_TYPE,
         String.valueOf(HoodieCommandBlock.HoodieCommandBlockTypeEnum.ROLLBACK_PREVIOUS_BLOCK.ordinal()));
     HoodieCommandBlock commandBlock = new HoodieCommandBlock(header);
-    writer = writer.appendBlock(commandBlock);
+    writer.appendBlock(commandBlock);
 
     readKeys.clear();
     scanner = new HoodieMergedLogRecordScanner(fs, basePath, allLogFiles, schema, "101", 10240L, readBlocksLazily,
@@ -853,10 +850,6 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     dataBlock = new HoodieAvroDataBlock(records2, header);
     writer = writer.appendBlock(dataBlock);
 
-    List<String> originalKeys =
-        copyOfRecords1.stream().map(s -> ((GenericRecord) s).get(HoodieRecord.RECORD_KEY_METADATA_FIELD).toString())
-            .collect(Collectors.toList());
-
     // Delete 50 keys
     // Delete 50 keys
     List<HoodieKey> deletedKeys = copyOfRecords1.stream()
@@ -879,7 +872,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
       // it's okay
     }
     // Attempt 2 : Write another rollback blocks for a failed write
-    writer = writer.appendBlock(commandBlock);
+    writer.appendBlock(commandBlock);
 
     List<String> allLogFiles =
         FSUtils.getAllLogFiles(fs, partitionPath, "test-fileid1", HoodieLogFile.DELTA_EXTENSION, "100")
@@ -935,7 +928,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
         String.valueOf(HoodieCommandBlock.HoodieCommandBlockTypeEnum.ROLLBACK_PREVIOUS_BLOCK.ordinal()));
     HoodieCommandBlock commandBlock = new HoodieCommandBlock(header);
     writer = writer.appendBlock(commandBlock);
-    writer = writer.appendBlock(commandBlock);
+    writer.appendBlock(commandBlock);
 
     List<String> allLogFiles =
         FSUtils.getAllLogFiles(fs, partitionPath, "test-fileid1", HoodieLogFile.DELTA_EXTENSION, "100")
@@ -968,7 +961,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     header.put(HoodieLogBlock.HeaderMetadataType.COMMAND_BLOCK_TYPE,
         String.valueOf(HoodieCommandBlock.HoodieCommandBlockTypeEnum.ROLLBACK_PREVIOUS_BLOCK.ordinal()));
     HoodieCommandBlock commandBlock = new HoodieCommandBlock(header);
-    writer = writer.appendBlock(commandBlock);
+    writer.appendBlock(commandBlock);
 
     List<String> allLogFiles =
         FSUtils.getAllLogFiles(fs, partitionPath, "test-fileid1", HoodieLogFile.DELTA_EXTENSION, "100")
@@ -1006,10 +999,6 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     writer = writer.appendBlock(dataBlock);
     writer = writer.appendBlock(dataBlock);
 
-    List<String> originalKeys =
-        copyOfRecords1.stream().map(s -> ((GenericRecord) s).get(HoodieRecord.RECORD_KEY_METADATA_FIELD).toString())
-            .collect(Collectors.toList());
-
     // Delete 50 keys
     // Delete 50 keys
     List<HoodieKey> deletedKeys = copyOfRecords1.stream()
@@ -1024,7 +1013,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     header.put(HoodieLogBlock.HeaderMetadataType.COMMAND_BLOCK_TYPE,
         String.valueOf(HoodieCommandBlock.HoodieCommandBlockTypeEnum.ROLLBACK_PREVIOUS_BLOCK.ordinal()));
     HoodieCommandBlock commandBlock = new HoodieCommandBlock(header);
-    writer = writer.appendBlock(commandBlock);
+    writer.appendBlock(commandBlock);
 
     List<String> allLogFiles =
         FSUtils.getAllLogFiles(fs, partitionPath, "test-fileid1", HoodieLogFile.DELTA_EXTENSION, "100")
@@ -1064,7 +1053,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     outputStream.write(HoodieLogFormat.MAGIC);
     outputStream.writeLong(1000);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     // Write out a length that does not confirm with the content
     outputStream.writeLong(100);
     outputStream.flush();
@@ -1077,7 +1066,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     outputStream.write(HoodieLogFormat.MAGIC);
     outputStream.writeLong(1000);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     // Write out a length that does not confirm with the content
     outputStream.writeLong(100);
     outputStream.flush();
@@ -1097,7 +1086,7 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
     outputStream.write(HoodieLogFormat.MAGIC);
     outputStream.writeLong(1000);
     outputStream.writeInt(HoodieLogBlockType.AVRO_DATA_BLOCK.ordinal());
-    outputStream.writeInt(HoodieLogFormat.currentVersion);
+    outputStream.writeInt(HoodieLogFormat.CURRENT_VERSION);
     // Write out a length that does not confirm with the content
     outputStream.writeLong(100);
     outputStream.flush();
@@ -1273,8 +1262,6 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
         HoodieLogFormat.newWriterBuilder().onParentPath(partitionPath).withFileExtension(HoodieLogFile.DELTA_EXTENSION)
             .withFileId("test-fileid1").overBaseCommit("100").withFs(fs).build();
     List<IndexedRecord> records2 = SchemaTestUtil.generateTestRecords(0, 100);
-    List<IndexedRecord> copyOfRecords2 = records2.stream()
-        .map(record -> HoodieAvroUtils.rewriteRecord((GenericRecord) record, schema)).collect(Collectors.toList());
     dataBlock = new HoodieAvroDataBlock(records2, header);
     writer = writer.appendBlock(dataBlock);
     writer.close();
@@ -1284,8 +1271,6 @@ public class TestHoodieLogFormat extends HoodieCommonTestHarness {
         HoodieLogFormat.newWriterBuilder().onParentPath(partitionPath).withFileExtension(HoodieLogFile.DELTA_EXTENSION)
             .withFileId("test-fileid1").overBaseCommit("100").withFs(fs).build();
     List<IndexedRecord> records3 = SchemaTestUtil.generateTestRecords(0, 100);
-    List<IndexedRecord> copyOfRecords3 = records3.stream()
-        .map(record -> HoodieAvroUtils.rewriteRecord((GenericRecord) record, schema)).collect(Collectors.toList());
     dataBlock = new HoodieAvroDataBlock(records3, header);
     writer = writer.appendBlock(dataBlock);
     writer.close();

@@ -18,7 +18,12 @@
 
 package org.apache.hudi.io.compact.strategy;
 
+import org.apache.hudi.avro.model.HoodieCompactionOperation;
+import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.config.HoodieWriteConfig;
+
 import com.google.common.annotations.VisibleForTesting;
+
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Comparator;
@@ -26,13 +31,10 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.hudi.avro.model.HoodieCompactionOperation;
-import org.apache.hudi.avro.model.HoodieCompactionPlan;
-import org.apache.hudi.config.HoodieWriteConfig;
 
 /**
  * This strategy ensures that the last N partitions are picked up even if there are later partitions created for the
- * dataset. lastNPartitions is defined as the N partitions before the currentDate. currentDay = 2018/01/01 The dataset
+ * table. lastNPartitions is defined as the N partitions before the currentDate. currentDay = 2018/01/01 The table
  * has partitions for 2018/02/02 and 2018/03/03 beyond the currentDay This strategy will pick up the following
  * partitions for compaction : (2018/01/01, allPartitionsInRange[(2018/01/01 - lastNPartitions) to 2018/01/01),
  * 2018/02/02, 2018/03/03)
@@ -48,13 +50,11 @@ public class BoundedPartitionAwareCompactionStrategy extends DayBasedCompactionS
     String earliestPartitionPathToCompact =
         dateFormat.format(getDateAtOffsetFromToday(-1 * writeConfig.getTargetPartitionsPerDayBasedCompaction()));
     // Filter out all partitions greater than earliestPartitionPathToCompact
-    List<HoodieCompactionOperation> eligibleCompactionOperations =
-        operations.stream().collect(Collectors.groupingBy(HoodieCompactionOperation::getPartitionPath)).entrySet()
-            .stream().sorted(Map.Entry.comparingByKey(comparator))
-            .filter(e -> comparator.compare(earliestPartitionPathToCompact, e.getKey()) >= 0)
-            .flatMap(e -> e.getValue().stream()).collect(Collectors.toList());
 
-    return eligibleCompactionOperations;
+    return operations.stream().collect(Collectors.groupingBy(HoodieCompactionOperation::getPartitionPath)).entrySet()
+        .stream().sorted(Map.Entry.comparingByKey(comparator))
+        .filter(e -> comparator.compare(earliestPartitionPathToCompact, e.getKey()) >= 0)
+        .flatMap(e -> e.getValue().stream()).collect(Collectors.toList());
   }
 
   @Override
@@ -63,10 +63,9 @@ public class BoundedPartitionAwareCompactionStrategy extends DayBasedCompactionS
     String earliestPartitionPathToCompact =
         dateFormat.format(getDateAtOffsetFromToday(-1 * writeConfig.getTargetPartitionsPerDayBasedCompaction()));
     // Get all partitions and sort them
-    List<String> filteredPartitionPaths = partitionPaths.stream().map(partition -> partition.replace("/", "-"))
+    return partitionPaths.stream().map(partition -> partition.replace("/", "-"))
         .sorted(Comparator.reverseOrder()).map(partitionPath -> partitionPath.replace("-", "/"))
         .filter(e -> comparator.compare(earliestPartitionPathToCompact, e) >= 0).collect(Collectors.toList());
-    return filteredPartitionPaths;
   }
 
   @VisibleForTesting

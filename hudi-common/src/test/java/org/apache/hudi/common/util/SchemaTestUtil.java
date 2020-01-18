@@ -18,6 +18,19 @@
 
 package org.apache.hudi.common.util;
 
+import org.apache.hudi.avro.MercifulJsonConverter;
+import org.apache.hudi.common.model.HoodieAvroPayload;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.exception.HoodieIOException;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.avro.io.DecoderFactory;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -33,18 +46,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.hudi.avro.MercifulJsonConverter;
-import org.apache.hudi.common.model.HoodieAvroPayload;
-import org.apache.hudi.common.model.HoodieKey;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
-import org.apache.hudi.exception.HoodieIOException;
 
+/**
+ * A utility class for testing schema.
+ */
 public class SchemaTestUtil {
 
   public static Schema getSimpleSchema() throws IOException {
@@ -95,7 +100,7 @@ public class SchemaTestUtil {
   public static List<IndexedRecord> generateHoodieTestRecords(int from, int limit)
       throws IOException, URISyntaxException {
     List<IndexedRecord> records = generateTestRecords(from, limit);
-    String commitTime = HoodieActiveTimeline.createNewCommitTime();
+    String commitTime = HoodieActiveTimeline.createNewInstantTime();
     Schema hoodieFieldsSchema = HoodieAvroUtils.addMetadataFields(getSimpleSchema());
     return records.stream().map(s -> HoodieAvroUtils.rewriteRecord((GenericRecord) s, hoodieFieldsSchema)).map(p -> {
       p.put(HoodieRecord.RECORD_KEY_METADATA_FIELD, UUID.randomUUID().toString());
@@ -119,7 +124,7 @@ public class SchemaTestUtil {
   }
 
   public static List<IndexedRecord> updateHoodieTestRecords(List<String> oldRecordKeys, List<IndexedRecord> newRecords,
-      String commitTime) throws IOException, URISyntaxException {
+      String commitTime) {
 
     return newRecords.stream().map(p -> {
       ((GenericRecord) p).put(HoodieRecord.RECORD_KEY_METADATA_FIELD, oldRecordKeys.remove(0));
@@ -139,7 +144,7 @@ public class SchemaTestUtil {
   }
 
   public static List<HoodieRecord> updateHoodieTestRecordsWithoutHoodieMetadata(List<HoodieRecord> oldRecords,
-      Schema schema, String fieldNameToUpdate, String newValue) throws IOException, URISyntaxException {
+      Schema schema, String fieldNameToUpdate, String newValue) {
     return oldRecords.stream().map(r -> {
       try {
         GenericRecord rec = (GenericRecord) r.getData().getInsertValue(schema).get();
@@ -162,6 +167,10 @@ public class SchemaTestUtil {
 
   public static Schema getComplexEvolvedSchema() throws IOException {
     return new Schema.Parser().parse(SchemaTestUtil.class.getResourceAsStream("/complex-test-evolved.avsc"));
+  }
+
+  public static Schema getTimestampEvolvedSchema() throws IOException {
+    return new Schema.Parser().parse(SchemaTestUtil.class.getResourceAsStream("/timestamp-test-evolved.avsc"));
   }
 
   public static GenericRecord generateAvroRecordFromJson(Schema schema, int recordNumber, String commitTime,

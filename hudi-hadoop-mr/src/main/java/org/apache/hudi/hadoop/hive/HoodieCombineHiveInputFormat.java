@@ -18,23 +18,10 @@
 
 package org.apache.hudi.hadoop.hive;
 
+import org.apache.hudi.hadoop.HoodieParquetInputFormat;
+import org.apache.hudi.hadoop.realtime.HoodieParquetRealtimeInputFormat;
+
 import com.google.common.annotations.VisibleForTesting;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -70,10 +57,25 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.lib.CombineFileInputFormat;
 import org.apache.hadoop.mapred.lib.CombineFileSplit;
 import org.apache.hadoop.mapreduce.JobContext;
-import org.apache.hudi.hadoop.HoodieParquetInputFormat;
-import org.apache.hudi.hadoop.realtime.HoodieParquetRealtimeInputFormat;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * This is just a copy of the org.apache.hadoop.hive.ql.io.CombineHiveInputFormat from Hive 2.x Search for **MOD** to
@@ -484,7 +486,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
   }
 
   /**
-   * Gets all the path indices that should not be combined
+   * Gets all the path indices that should not be combined.
    */
   @VisibleForTesting
   public Set<Integer> getNonCombinablePathIndices(JobConf job, Path[] paths, int numThreads)
@@ -600,8 +602,8 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
   }
 
   /**
-   * MOD - Just added this for visibility
-   **/
+   * MOD - Just added this for visibility.
+   */
   Path[] getInputPaths(JobConf job) throws IOException {
     Path[] dirs = FileInputFormat.getInputPaths(job);
     if (dirs.length == 0) {
@@ -784,7 +786,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
   }
 
   /**
-   * This is a marker interface that is used to identify the formats where combine split generation is not applicable
+   * This is a marker interface that is used to identify the formats where combine split generation is not applicable.
    */
   public interface AvoidSplitCombination {
 
@@ -792,8 +794,8 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
   }
 
   /**
-   * **MOD** this is the implementation of CombineFileInputFormat which is a copy of
-   * org.apache.hadoop.hive.shims.HadoopShimsSecure.CombineFileInputFormatShim with changes in listStatus
+   * **MOD** This is the implementation of CombineFileInputFormat which is a copy of
+   * org.apache.hadoop.hive.shims.HadoopShimsSecure.CombineFileInputFormatShim with changes in listStatus.
    */
   public static class HoodieCombineFileInputFormatShim<K, V> extends CombineFileInputFormat<K, V>
       implements org.apache.hadoop.hive.shims.HadoopShims.CombineFileInputFormatShim<K, V> {
@@ -803,6 +805,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
 
     public HoodieCombineFileInputFormatShim() {}
 
+    @Override
     public Path[] getInputPathsShim(JobConf conf) {
       try {
         return FileInputFormat.getInputPaths(conf);
@@ -811,6 +814,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
       }
     }
 
+    @Override
     public void createPool(JobConf conf, PathFilter... filters) {
       super.createPool(conf, filters);
     }
@@ -820,6 +824,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
       throw new IOException("CombineFileInputFormat.getRecordReader not needed.");
     }
 
+    @Override
     protected List<FileStatus> listStatus(JobContext job) throws IOException {
       LOG.info("Listing status in HoodieCombineHiveInputFormat.HoodieCombineFileInputFormatShim");
       List<FileStatus> result;
@@ -849,6 +854,7 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
       return result;
     }
 
+    @Override
     public CombineFileSplit[] getSplits(JobConf job, int numSplits) throws IOException {
       long minSize = job.getLong(org.apache.hadoop.mapreduce.lib.input.FileInputFormat.SPLIT_MINSIZE, 0L);
       if (job.getLong("mapreduce.input.fileinputformat.split.minsize.per.node", 0L) == 0L) {
@@ -877,10 +883,12 @@ public class HoodieCombineHiveInputFormat<K extends WritableComparable, V extend
       return (CombineFileSplit[]) inputSplitShims.toArray(new HadoopShimsSecure.InputSplitShim[inputSplitShims.size()]);
     }
 
+    @Override
     public HadoopShimsSecure.InputSplitShim getInputSplitShim() throws IOException {
       return new HadoopShimsSecure.InputSplitShim();
     }
 
+    @Override
     public RecordReader getRecordReader(JobConf job, CombineFileSplit split, Reporter reporter,
         Class<RecordReader<K, V>> rrClass) throws IOException {
       return new HadoopShimsSecure.CombineFileRecordReader(job, split, reporter, rrClass);

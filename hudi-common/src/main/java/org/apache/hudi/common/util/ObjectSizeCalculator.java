@@ -22,6 +22,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
+
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
 import java.lang.reflect.Array;
@@ -123,6 +124,7 @@ public class ObjectSizeCalculator {
 
   private final LoadingCache<Class<?>, ClassSizeInfo> classSizeInfos =
       CacheBuilder.newBuilder().build(new CacheLoader<Class<?>, ClassSizeInfo>() {
+        @Override
         public ClassSizeInfo load(Class<?> clazz) {
           return new ClassSizeInfo(clazz);
         }

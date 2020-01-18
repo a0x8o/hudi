@@ -18,23 +18,25 @@
 
 package org.apache.hudi;
 
-import com.google.common.collect.Sets;
-import java.util.List;
-import java.util.stream.Collectors;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.HoodieTimeline;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 
+import com.google.common.collect.Sets;
+import org.apache.hadoop.fs.FileSystem;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
- * List of helpers to aid, construction of instanttime for read and write operations using datasource
+ * List of helpers to aid, construction of instanttime for read and write operations using datasource.
  */
 public class HoodieDataSourceHelpers {
 
   /**
-   * Checks if the Hoodie dataset has new data since given timestamp. This can be subsequently fed to an incremental
+   * Checks if the Hoodie table has new data since given timestamp. This can be subsequently fed to an incremental
    * view read, to perform incremental processing.
    */
   public static boolean hasNewCommits(FileSystem fs, String basePath, String commitTimestamp) {
@@ -51,7 +53,7 @@ public class HoodieDataSourceHelpers {
   }
 
   /**
-   * Returns the last successful write operation's instant time
+   * Returns the last successful write operation's instant time.
    */
   public static String latestCommit(FileSystem fs, String basePath) {
     HoodieTimeline timeline = allCompletedCommitsCompactions(fs, basePath);

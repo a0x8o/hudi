@@ -18,16 +18,18 @@
 
 package org.apache.hudi.func;
 
-import java.util.Iterator;
-import java.util.function.Function;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.queue.BoundedInMemoryExecutor;
 import org.apache.hudi.common.util.queue.BoundedInMemoryQueueConsumer;
 import org.apache.hudi.common.util.queue.BoundedInMemoryQueueProducer;
 import org.apache.hudi.common.util.queue.IteratorBasedQueueProducer;
 import org.apache.hudi.config.HoodieWriteConfig;
+
 import org.apache.spark.TaskContext;
 import org.apache.spark.TaskContext$;
+
+import java.util.Iterator;
+import java.util.function.Function;
 
 public class SparkBoundedInMemoryExecutor<I, O, E> extends BoundedInMemoryExecutor<I, O, E> {
 
@@ -46,6 +48,7 @@ public class SparkBoundedInMemoryExecutor<I, O, E> extends BoundedInMemoryExecut
     this.sparkThreadTaskContext = TaskContext.get();
   }
 
+  @Override
   public void preExecute() {
     // Passing parent thread's TaskContext to newly launched thread for it to access original TaskContext properties.
     TaskContext$.MODULE$.setTaskContext(sparkThreadTaskContext);

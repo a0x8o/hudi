@@ -16,15 +16,12 @@
  * limitations under the License.
  */
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-import java.util.List;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.HoodieWriteClient;
 import org.apache.hudi.WriteStatus;
+import org.apache.hudi.common.HoodieClientTestUtils;
 import org.apache.hudi.common.HoodieTestDataGenerator;
 import org.apache.hudi.common.model.HoodieAvroPayload;
+import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
@@ -34,11 +31,19 @@ import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.index.HoodieIndex.IndexType;
+
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Driver program that uses the Hoodie client with synthetic workload, and performs basic operations.
@@ -46,7 +51,7 @@ import org.apache.spark.api.java.JavaSparkContext;
  */
 public class HoodieClientExample {
 
-  private static Logger logger = LogManager.getLogger(HoodieClientExample.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieClientExample.class);
   @Parameter(names = {"--help", "-h"}, help = true)
   public Boolean help = false;
   @Parameter(names = {"--table-path", "-p"}, description = "path for Hoodie sample table")
@@ -58,7 +63,7 @@ public class HoodieClientExample {
 
   public static void main(String[] args) throws Exception {
     HoodieClientExample cli = new HoodieClientExample();
-    JCommander cmd = new JCommander(cli, args);
+    JCommander cmd = new JCommander(cli, null, args);
 
     if (cli.help) {
       cmd.usage();
@@ -66,7 +71,6 @@ public class HoodieClientExample {
     }
     cli.run();
   }
-
 
   public void run() throws Exception {
 
@@ -91,16 +95,18 @@ public class HoodieClientExample {
     HoodieWriteConfig cfg = HoodieWriteConfig.newBuilder().withPath(tablePath)
         .withSchema(HoodieTestDataGenerator.TRIP_EXAMPLE_SCHEMA).withParallelism(2, 2).forTable(tableName)
         .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(IndexType.BLOOM).build())
-        .withCompactionConfig(HoodieCompactionConfig.newBuilder().archiveCommitsWith(2, 3).build()).build();
+        .withCompactionConfig(HoodieCompactionConfig.newBuilder().archiveCommitsWith(20, 30).build()).build();
     HoodieWriteClient client = new HoodieWriteClient(jsc, cfg);
 
+    List<HoodieRecord> recordsSoFar = new ArrayList<>();
     /**
      * Write 1 (only inserts)
      */
     String newCommitTime = client.startCommit();
-    logger.info("Starting commit " + newCommitTime);
+    LOG.info("Starting commit " + newCommitTime);
 
     List<HoodieRecord> records = dataGen.generateInserts(newCommitTime, 100);
+    recordsSoFar.addAll(records);
     JavaRDD<HoodieRecord> writeRecords = jsc.<HoodieRecord>parallelize(records, 1);
     client.upsert(writeRecords, newCommitTime);
 
@@ -108,13 +114,25 @@ public class HoodieClientExample {
      * Write 2 (updates)
      */
     newCommitTime = client.startCommit();
-    logger.info("Starting commit " + newCommitTime);
-    records.addAll(dataGen.generateUpdates(newCommitTime, 100));
+    LOG.info("Starting commit " + newCommitTime);
+    List<HoodieRecord> toBeUpdated = dataGen.generateUpdates(newCommitTime, 100);
+    records.addAll(toBeUpdated);
+    recordsSoFar.addAll(toBeUpdated);
     writeRecords = jsc.<HoodieRecord>parallelize(records, 1);
     client.upsert(writeRecords, newCommitTime);
 
     /**
-     * Schedule a compaction and also perform compaction on a MOR dataset
+     * Delete 1
+     */
+    newCommitTime = client.startCommit();
+    LOG.info("Starting commit " + newCommitTime);
+    List<HoodieKey> toBeDeleted = HoodieClientTestUtils
+        .getKeysToDelete(HoodieClientTestUtils.getHoodieKeys(recordsSoFar), 10);
+    JavaRDD<HoodieKey> deleteRecords = jsc.<HoodieKey>parallelize(toBeDeleted, 1);
+    client.delete(deleteRecords, newCommitTime);
+
+    /**
+     * Schedule a compaction and also perform compaction on a MOR table
      */
     if (HoodieTableType.valueOf(tableType) == HoodieTableType.MERGE_ON_READ) {
       Option<String> instant = client.scheduleCompaction(Option.empty());

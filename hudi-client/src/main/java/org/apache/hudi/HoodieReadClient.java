@@ -18,13 +18,9 @@
 
 package org.apache.hudi;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.client.embedded.EmbeddedTimelineService;
-import org.apache.hudi.common.model.HoodieDataFile;
+import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
@@ -38,6 +34,7 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieIndexException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
+
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -48,6 +45,12 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.types.StructType;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import scala.Tuple2;
 
 /**
@@ -55,11 +58,11 @@ import scala.Tuple2;
  */
 public class HoodieReadClient<T extends HoodieRecordPayload> extends AbstractHoodieClient {
 
-  private static final Logger logger = LogManager.getLogger(HoodieReadClient.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieReadClient.class);
 
   /**
    * TODO: We need to persist the index type into hoodie.properties and be able to access the index just with a simple
-   * basepath pointing to the dataset. Until, then just always assume a BloomIndex
+   * basepath pointing to the table. Until, then just always assume a BloomIndex
    */
   private final transient HoodieIndex<T> index;
   private final HoodieTimeline commitTimeline;
@@ -67,7 +70,7 @@ public class HoodieReadClient<T extends HoodieRecordPayload> extends AbstractHoo
   private transient Option<SQLContext> sqlContextOpt;
 
   /**
-   * @param basePath path to Hoodie dataset
+   * @param basePath path to Hoodie table
    */
   public HoodieReadClient(JavaSparkContext jsc, String basePath, Option<EmbeddedTimelineService> timelineService) {
     this(jsc, HoodieWriteConfig.newBuilder().withPath(basePath)
@@ -77,7 +80,7 @@ public class HoodieReadClient<T extends HoodieRecordPayload> extends AbstractHoo
   }
 
   /**
-   * @param basePath path to Hoodie dataset
+   * @param basePath path to Hoodie table
    */
   public HoodieReadClient(JavaSparkContext jsc, String basePath) {
     this(jsc, basePath, Option.empty());
@@ -133,8 +136,8 @@ public class HoodieReadClient<T extends HoodieRecordPayload> extends AbstractHoo
 
   private Option<String> convertToDataFilePath(Option<Pair<String, String>> partitionPathFileIDPair) {
     if (partitionPathFileIDPair.isPresent()) {
-      HoodieDataFile dataFile = hoodieTable.getROFileSystemView()
-          .getLatestDataFile(partitionPathFileIDPair.get().getLeft(), partitionPathFileIDPair.get().getRight()).get();
+      HoodieBaseFile dataFile = hoodieTable.getBaseFileOnlyView()
+          .getLatestBaseFile(partitionPathFileIDPair.get().getLeft(), partitionPathFileIDPair.get().getRight()).get();
       return Option.of(dataFile.getPath());
     } else {
       return Option.empty();
@@ -142,7 +145,7 @@ public class HoodieReadClient<T extends HoodieRecordPayload> extends AbstractHoo
   }
 
   /**
-   * Given a bunch of hoodie keys, fetches all the individual records out as a data frame
+   * Given a bunch of hoodie keys, fetches all the individual records out as a data frame.
    *
    * @return a dataframe
    */

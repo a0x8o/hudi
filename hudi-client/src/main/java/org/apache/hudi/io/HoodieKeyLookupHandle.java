@@ -18,14 +18,8 @@
 
 package org.apache.hudi.io;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hudi.common.BloomFilter;
-import org.apache.hudi.common.model.HoodieDataFile;
+import org.apache.hudi.common.bloom.filter.BloomFilter;
+import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.util.HoodieTimer;
@@ -34,15 +28,23 @@ import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieIndexException;
 import org.apache.hudi.table.HoodieTable;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Takes a bunch of keys and returns ones that are present in the file group.
  */
 public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends HoodieReadHandle<T> {
 
-  private static Logger logger = LogManager.getLogger(HoodieKeyLookupHandle.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieKeyLookupHandle.class);
 
   private final HoodieTableType tableType;
 
@@ -53,7 +55,7 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
   private long totalKeysChecked;
 
   public HoodieKeyLookupHandle(HoodieWriteConfig config, HoodieTable<T> hoodieTable,
-      Pair<String, String> partitionPathFilePair) {
+                               Pair<String, String> partitionPathFilePair) {
     super(config, null, hoodieTable, partitionPathFilePair);
     this.tableType = hoodieTable.getMetaClient().getTableType();
     this.candidateRecordKeys = new ArrayList<>();
@@ -61,14 +63,14 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
     HoodieTimer timer = new HoodieTimer().startTimer();
     this.bloomFilter = ParquetUtils.readBloomFilterFromParquetMetadata(hoodieTable.getHadoopConf(),
         new Path(getLatestDataFile().getPath()));
-    logger.info(String.format("Read bloom filter from %s in %d ms", partitionPathFilePair, timer.endTimer()));
+    LOG.info(String.format("Read bloom filter from %s in %d ms", partitionPathFilePair, timer.endTimer()));
   }
 
   /**
    * Given a list of row keys and one file, return only row keys existing in that file.
    */
   public static List<String> checkCandidatesAgainstFile(Configuration configuration, List<String> candidateRecordKeys,
-      Path filePath) throws HoodieIndexException {
+                                                        Path filePath) throws HoodieIndexException {
     List<String> foundRecordKeys = new ArrayList<>();
     try {
       // Load all rowKeys from the file, to double-confirm
@@ -77,10 +79,10 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
         Set<String> fileRowKeys =
             ParquetUtils.filterParquetRowKeys(configuration, filePath, new HashSet<>(candidateRecordKeys));
         foundRecordKeys.addAll(fileRowKeys);
-        logger.info(String.format("Checked keys against file %s, in %d ms. #candidates (%d) #found (%d)", filePath,
+        LOG.info(String.format("Checked keys against file %s, in %d ms. #candidates (%d) #found (%d)", filePath,
             timer.endTimer(), candidateRecordKeys.size(), foundRecordKeys.size()));
-        if (logger.isDebugEnabled()) {
-          logger.debug("Keys matching for file " + filePath + " => " + foundRecordKeys);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Keys matching for file " + filePath + " => " + foundRecordKeys);
         }
       }
     } catch (Exception e) {
@@ -95,8 +97,8 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
   public void addKey(String recordKey) {
     // check record key against bloom filter of current file & add to possible keys if needed
     if (bloomFilter.mightContain(recordKey)) {
-      if (logger.isDebugEnabled()) {
-        logger.debug("Record key " + recordKey + " matches bloom filter in  " + partitionPathFilePair);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Record key " + recordKey + " matches bloom filter in  " + partitionPathFilePair);
       }
       candidateRecordKeys.add(recordKey);
     }
@@ -107,14 +109,14 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
    * Of all the keys, that were added, return a list of keys that were actually found in the file group.
    */
   public KeyLookupResult getLookupResult() {
-    if (logger.isDebugEnabled()) {
-      logger.debug("#The candidate row keys for " + partitionPathFilePair + " => " + candidateRecordKeys);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("#The candidate row keys for " + partitionPathFilePair + " => " + candidateRecordKeys);
     }
 
-    HoodieDataFile dataFile = getLatestDataFile();
+    HoodieBaseFile dataFile = getLatestDataFile();
     List<String> matchingKeys =
         checkCandidatesAgainstFile(hoodieTable.getHadoopConf(), candidateRecordKeys, new Path(dataFile.getPath()));
-    logger.info(
+    LOG.info(
         String.format("Total records (%d), bloom filter candidates (%d)/fp(%d), actual matches (%d)", totalKeysChecked,
             candidateRecordKeys.size(), candidateRecordKeys.size() - matchingKeys.size(), matchingKeys.size()));
     return new KeyLookupResult(partitionPathFilePair.getRight(), partitionPathFilePair.getLeft(),
@@ -122,7 +124,7 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
   }
 
   /**
-   * Encapsulates the result from a key lookup
+   * Encapsulates the result from a key lookup.
    */
   public static class KeyLookupResult {
 
@@ -132,7 +134,7 @@ public class HoodieKeyLookupHandle<T extends HoodieRecordPayload> extends Hoodie
     private final String partitionPath;
 
     public KeyLookupResult(String fileId, String partitionPath, String baseInstantTime,
-        List<String> matchingRecordKeys) {
+                           List<String> matchingRecordKeys) {
       this.fileId = fileId;
       this.partitionPath = partitionPath;
       this.baseInstantTime = baseInstantTime;

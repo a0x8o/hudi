@@ -18,17 +18,22 @@
 
 package org.apache.hudi.common.util;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.hudi.common.model.HoodieAvroPayload;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Tests spillable map test utils.
+ */
 public class SpillableMapTestUtils {
 
   public static final String DUMMY_COMMIT_TIME = "DUMMY_COMMIT_TIME";
@@ -37,7 +42,7 @@ public class SpillableMapTestUtils {
   public static List<String> upsertRecords(List<IndexedRecord> iRecords,
       Map<String, HoodieRecord<? extends HoodieRecordPayload>> records) {
     List<String> recordKeys = new ArrayList<>();
-    iRecords.stream().forEach(r -> {
+    iRecords.forEach(r -> {
       String key = ((GenericRecord) r).get(HoodieRecord.RECORD_KEY_METADATA_FIELD).toString();
       String partitionPath = ((GenericRecord) r).get(HoodieRecord.PARTITION_PATH_METADATA_FIELD).toString();
       recordKeys.add(key);

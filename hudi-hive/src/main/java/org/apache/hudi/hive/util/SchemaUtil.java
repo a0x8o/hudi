@@ -18,16 +18,6 @@
 
 package org.apache.hudi.hive.util;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.log.HoodieLogFormat.Reader;
@@ -36,6 +26,11 @@ import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.hive.HiveSyncConfig;
 import org.apache.hudi.hive.HoodieHiveSyncException;
 import org.apache.hudi.hive.SchemaDifference;
+
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroSchemaConverter;
@@ -46,15 +41,23 @@ import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Type;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 /**
- * Schema Utilities
+ * Schema Utilities.
  */
 public class SchemaUtil {
 
   private static final Logger LOG = LogManager.getLogger(SchemaUtil.class);
+  public static final String HIVE_ESCAPE_CHARACTER = "`";
 
   /**
-   * Get the schema difference between the storage schema and hive table schema
+   * Get the schema difference between the storage schema and hive table schema.
    */
   public static SchemaDifference getSchemaDifference(MessageType storageSchema, Map<String, String> tableSchema,
       List<String> partitionKeys) {
@@ -92,7 +95,7 @@ public class SchemaUtil {
         expectedType = expectedType.replaceAll("`", "");
 
         if (!tableColumnType.equalsIgnoreCase(expectedType)) {
-          // check for incremental datasets, the schema type change is allowed as per evolution
+          // check for incremental queries, the schema type change is allowed as per evolution
           // rules
           if (!isSchemaTypeUpdateAllowed(tableColumnType, expectedType)) {
             throw new HoodieHiveSyncException("Could not convert field Type from " + tableColumnType + " to "
@@ -132,9 +135,8 @@ public class SchemaUtil {
     return false;
   }
 
-
   /**
-   * Returns equivalent Hive table schema read from a parquet file
+   * Returns equivalent Hive table schema read from a parquet file.
    *
    * @param messageType : Parquet Schema
    * @return : Hive Table schema read from parquet file MAP[String,String]
@@ -157,7 +159,7 @@ public class SchemaUtil {
   }
 
   /**
-   * Convert one field data type of parquet schema into an equivalent Hive schema
+   * Convert one field data type of parquet schema into an equivalent Hive schema.
    *
    * @param parquetType : Single paruet field
    * @return : Equivalent sHive schema
@@ -172,6 +174,8 @@ public class SchemaUtil {
         final DecimalMetadata decimalMetadata = parquetType.asPrimitiveType().getDecimalMetadata();
         return field.append("DECIMAL(").append(decimalMetadata.getPrecision()).append(" , ")
             .append(decimalMetadata.getScale()).append(")").toString();
+      } else if (originalType == OriginalType.DATE) {
+        return field.append("DATE").toString();
       }
       // TODO - fix the method naming here
       return parquetPrimitiveTypeName.convert(new PrimitiveType.PrimitiveTypeNameConverter<String, RuntimeException>() {
@@ -271,7 +275,7 @@ public class SchemaUtil {
   }
 
   /**
-   * Return a 'struct' Hive schema from a list of Parquet fields
+   * Return a 'struct' Hive schema from a list of Parquet fields.
    *
    * @param parquetFields : list of parquet fields
    * @return : Equivalent 'struct' Hive schema
@@ -295,7 +299,6 @@ public class SchemaUtil {
     finalStr = finalStr.replaceAll("-", "_");
     return finalStr;
   }
-
 
   private static String hiveCompatibleFieldName(String fieldName, boolean isNested) {
     String result = fieldName;
@@ -324,14 +327,14 @@ public class SchemaUtil {
   }
 
   /**
-   * Create a 'Map' schema from Parquet map field
+   * Create a 'Map' schema from Parquet map field.
    */
   private static String createHiveMap(String keyType, String valueType) {
     return "MAP< " + keyType + ", " + valueType + ">";
   }
 
   /**
-   * Create an Array Hive schema from equivalent parquet list type
+   * Create an Array Hive schema from equivalent parquet list type.
    */
   private static String createHiveArray(Type elementType, String elementName) {
     StringBuilder array = new StringBuilder();
@@ -388,7 +391,7 @@ public class SchemaUtil {
     return columns.toString();
   }
 
-  public static String generateCreateDDL(MessageType storageSchema, HiveSyncConfig config, String inputFormatClass,
+  public static String generateCreateDDL(String tableName, MessageType storageSchema, HiveSyncConfig config, String inputFormatClass,
       String outputFormatClass, String serdeClass) throws IOException {
     Map<String, String> hiveSchema = convertParquetSchemaToHiveSchema(storageSchema);
     String columns = generateSchemaString(storageSchema, config.partitionFields);
@@ -402,7 +405,8 @@ public class SchemaUtil {
 
     String partitionsStr = partitionFields.stream().collect(Collectors.joining(","));
     StringBuilder sb = new StringBuilder("CREATE EXTERNAL TABLE  IF NOT EXISTS ");
-    sb = sb.append(config.databaseName).append(".").append(config.tableName);
+    sb = sb.append(HIVE_ESCAPE_CHARACTER).append(config.databaseName).append(HIVE_ESCAPE_CHARACTER)
+            .append(".").append(HIVE_ESCAPE_CHARACTER).append(tableName).append(HIVE_ESCAPE_CHARACTER);
     sb = sb.append("( ").append(columns).append(")");
     if (!config.partitionFields.isEmpty()) {
       sb = sb.append(" PARTITIONED BY (").append(partitionsStr).append(")");
@@ -425,7 +429,7 @@ public class SchemaUtil {
   }
 
   /**
-   * Read the schema from the log file on path
+   * Read the schema from the log file on path.
    * 
    * @return
    */

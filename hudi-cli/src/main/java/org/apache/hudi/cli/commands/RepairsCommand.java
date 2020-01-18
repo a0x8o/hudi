@@ -18,48 +18,52 @@
 
 package org.apache.hudi.cli.commands;
 
-import java.io.IOException;
-import java.util.List;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.cli.HoodieCLI;
 import org.apache.hudi.cli.HoodiePrintHelper;
 import org.apache.hudi.cli.utils.InputStreamConsumer;
 import org.apache.hudi.cli.utils.SparkUtil;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
+import org.apache.hudi.common.table.HoodieTableConfig;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.util.FSUtils;
+
+import org.apache.hadoop.fs.Path;
 import org.apache.spark.launcher.SparkLauncher;
 import org.springframework.shell.core.CommandMarker;
-import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+import static org.apache.hudi.common.table.HoodieTableMetaClient.METAFOLDER_NAME;
+
+/**
+ * CLI command to display and trigger repair options.
+ */
 @Component
 public class RepairsCommand implements CommandMarker {
 
-  @CliAvailabilityIndicator({"repair deduplicate"})
-  public boolean isRepairDeduplicateAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
-
-  @CliAvailabilityIndicator({"repair addpartitionmeta"})
-  public boolean isRepairAddPartitionMetaAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
-
   @CliCommand(value = "repair deduplicate",
-      help = "De-duplicate a partition path contains duplicates & produce " + "repaired files to replace with")
+      help = "De-duplicate a partition path contains duplicates & produce repaired files to replace with")
   public String deduplicate(
       @CliOption(key = {"duplicatedPartitionPath"}, help = "Partition Path containing the duplicates",
           mandatory = true) final String duplicatedPartitionPath,
       @CliOption(key = {"repairedOutputPath"}, help = "Location to place the repaired files",
           mandatory = true) final String repairedOutputPath,
-      @CliOption(key = {"sparkProperties"}, help = "Spark Properites File Path",
+      @CliOption(key = {"sparkProperties"}, help = "Spark Properties File Path",
           mandatory = true) final String sparkPropertiesPath)
       throws Exception {
     SparkLauncher sparkLauncher = SparkUtil.initLauncher(sparkPropertiesPath);
     sparkLauncher.addAppArgs(SparkMain.SparkCommand.DEDUPLICATE.toString(), duplicatedPartitionPath, repairedOutputPath,
-        HoodieCLI.tableMetadata.getBasePath());
+        HoodieCLI.getTableMetaClient().getBasePath());
     Process process = sparkLauncher.launch();
     InputStreamConsumer.captureOutput(process);
     int exitCode = process.waitFor();
@@ -70,19 +74,19 @@ public class RepairsCommand implements CommandMarker {
     return "Deduplication failed ";
   }
 
-
-  @CliCommand(value = "repair addpartitionmeta", help = "Add partition metadata to a dataset, if not present")
+  @CliCommand(value = "repair addpartitionmeta", help = "Add partition metadata to a table, if not present")
   public String addPartitionMeta(
       @CliOption(key = {"dryrun"}, help = "Should we actually add or just print what would be done",
           unspecifiedDefaultValue = "true") final boolean dryRun)
       throws IOException {
 
+    HoodieTableMetaClient client = HoodieCLI.getTableMetaClient();
     String latestCommit =
-        HoodieCLI.tableMetadata.getActiveTimeline().getCommitTimeline().lastInstant().get().getTimestamp();
+        client.getActiveTimeline().getCommitTimeline().lastInstant().get().getTimestamp();
     List<String> partitionPaths =
-        FSUtils.getAllPartitionFoldersThreeLevelsDown(HoodieCLI.fs, HoodieCLI.tableMetadata.getBasePath());
-    Path basePath = new Path(HoodieCLI.tableMetadata.getBasePath());
-    String[][] rows = new String[partitionPaths.size() + 1][];
+        FSUtils.getAllPartitionFoldersThreeLevelsDown(HoodieCLI.fs, client.getBasePath());
+    Path basePath = new Path(client.getBasePath());
+    String[][] rows = new String[partitionPaths.size()][];
 
     int ind = 0;
     for (String partition : partitionPaths) {
@@ -103,5 +107,34 @@ public class RepairsCommand implements CommandMarker {
     }
 
     return HoodiePrintHelper.print(new String[] {"Partition Path", "Metadata Present?", "Action"}, rows);
+  }
+
+  @CliCommand(value = "repair overwrite-hoodie-props", help = "Overwrite hoodie.properties with provided file. Risky operation. Proceed with caution!")
+  public String overwriteHoodieProperties(
+      @CliOption(key = {"new-props-file"}, help = "Path to a properties file on local filesystem to overwrite the table's hoodie.properties with")
+      final String overwriteFilePath) throws IOException {
+
+    HoodieTableMetaClient client = HoodieCLI.getTableMetaClient();
+    Properties newProps = new Properties();
+    newProps.load(new FileInputStream(new File(overwriteFilePath)));
+    Map<String, String> oldProps = client.getTableConfig().getProps();
+    Path metaPathDir = new Path(client.getBasePath(), METAFOLDER_NAME);
+    HoodieTableConfig.createHoodieProperties(client.getFs(), metaPathDir, newProps);
+
+    TreeSet<String> allPropKeys = new TreeSet<>();
+    allPropKeys.addAll(newProps.keySet().stream().map(Object::toString).collect(Collectors.toSet()));
+    allPropKeys.addAll(oldProps.keySet());
+
+    String[][] rows = new String[allPropKeys.size()][];
+    int ind = 0;
+    for (String propKey : allPropKeys) {
+      String[] row = new String[]{
+          propKey,
+          oldProps.getOrDefault(propKey, "null"),
+          newProps.getOrDefault(propKey, "null").toString()
+      };
+      rows[ind++] = row;
+    }
+    return HoodiePrintHelper.print(new String[] {"Property", "Old Value", "New Value"}, rows);
   }
 }

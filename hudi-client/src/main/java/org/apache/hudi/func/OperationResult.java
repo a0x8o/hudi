@@ -18,8 +18,9 @@
 
 package org.apache.hudi.func;
 
-import java.io.Serializable;
 import org.apache.hudi.common.util.Option;
+
+import java.io.Serializable;
 
 /**
  * Holds Operation result. Used as a result container for Compaction Admin Client (running as part of Spark-launcher
@@ -66,7 +67,7 @@ public class OperationResult<T> implements Serializable {
 
   @Override
   public String toString() {
-    return "OperationResult{" + "operation=" + operation + ", executed=" + executed + ", success=" + success
+    return "OperationResult{operation=" + operation + ", executed=" + executed + ", success=" + success
         + ", exception=" + exception + '}';
   }
 }

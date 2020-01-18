@@ -18,56 +18,40 @@
 
 package org.apache.hudi.cli.commands;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.hudi.HoodieWriteClient;
 import org.apache.hudi.cli.HoodieCLI;
 import org.apache.hudi.cli.HoodiePrintHelper;
 import org.apache.hudi.cli.utils.InputStreamConsumer;
 import org.apache.hudi.cli.utils.SparkUtil;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.HoodieTimeline;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.index.HoodieIndex;
+
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.launcher.SparkLauncher;
 import org.springframework.shell.core.CommandMarker;
-import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * CLI command to display savepoint options.
+ */
 @Component
 public class SavepointsCommand implements CommandMarker {
 
-  @CliAvailabilityIndicator({"savepoints show"})
-  public boolean isShowAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
-
-  @CliAvailabilityIndicator({"savepoints refresh"})
-  public boolean isRefreshAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
-
-
-  @CliAvailabilityIndicator({"savepoint create"})
-  public boolean isCreateSavepointAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
-
-  @CliAvailabilityIndicator({"savepoint rollback"})
-  public boolean isRollbackToSavepointAvailable() {
-    return HoodieCLI.tableMetadata != null
-        && !HoodieCLI.tableMetadata.getActiveTimeline().getSavePointTimeline().filterCompletedInstants().empty();
-  }
-
   @CliCommand(value = "savepoints show", help = "Show the savepoints")
   public String showSavepoints() throws IOException {
-    HoodieActiveTimeline activeTimeline = HoodieCLI.tableMetadata.getActiveTimeline();
+    HoodieActiveTimeline activeTimeline = HoodieCLI.getTableMetaClient().getActiveTimeline();
     HoodieTimeline timeline = activeTimeline.getSavePointTimeline().filterCompletedInstants();
     List<HoodieInstant> commits = timeline.getReverseOrderedInstants().collect(Collectors.toList());
     String[][] rows = new String[commits.size()][];
@@ -80,10 +64,11 @@ public class SavepointsCommand implements CommandMarker {
 
   @CliCommand(value = "savepoint create", help = "Savepoint a commit")
   public String savepoint(@CliOption(key = {"commit"}, help = "Commit to savepoint") final String commitTime,
-      @CliOption(key = {"user"}, help = "User who is creating the savepoint") final String user,
-      @CliOption(key = {"comments"}, help = "Comments for creating the savepoint") final String comments)
+      @CliOption(key = {"user"}, unspecifiedDefaultValue = "default", help = "User who is creating the savepoint") final String user,
+      @CliOption(key = {"comments"}, unspecifiedDefaultValue = "default", help = "Comments for creating the savepoint") final String comments)
       throws Exception {
-    HoodieActiveTimeline activeTimeline = HoodieCLI.tableMetadata.getActiveTimeline();
+    HoodieTableMetaClient metaClient = HoodieCLI.getTableMetaClient();
+    HoodieActiveTimeline activeTimeline = metaClient.getActiveTimeline();
     HoodieTimeline timeline = activeTimeline.getCommitTimeline().filterCompletedInstants();
     HoodieInstant commitInstant = new HoodieInstant(false, HoodieTimeline.COMMIT_ACTION, commitTime);
 
@@ -91,21 +76,30 @@ public class SavepointsCommand implements CommandMarker {
       return "Commit " + commitTime + " not found in Commits " + timeline;
     }
 
-    HoodieWriteClient client = createHoodieClient(null, HoodieCLI.tableMetadata.getBasePath());
+    JavaSparkContext jsc = SparkUtil.initJavaSparkConf("Create Savepoint");
+    HoodieWriteClient client = createHoodieClient(jsc, metaClient.getBasePath());
+    String result;
     if (client.savepoint(commitTime, user, comments)) {
       // Refresh the current
       refreshMetaClient();
-      return String.format("The commit \"%s\" has been savepointed.", commitTime);
+      result = String.format("The commit \"%s\" has been savepointed.", commitTime);
+    } else {
+      result = String.format("Failed: Could not savepoint commit \"%s\".", commitTime);
     }
-    return String.format("Failed: Could not savepoint commit \"%s\".", commitTime);
+    jsc.close();
+    return result;
   }
 
   @CliCommand(value = "savepoint rollback", help = "Savepoint a commit")
   public String rollbackToSavepoint(
       @CliOption(key = {"savepoint"}, help = "Savepoint to rollback") final String commitTime,
-      @CliOption(key = {"sparkProperties"}, help = "Spark Properites File Path") final String sparkPropertiesPath)
+      @CliOption(key = {"sparkProperties"}, help = "Spark Properties File Path") final String sparkPropertiesPath)
       throws Exception {
-    HoodieActiveTimeline activeTimeline = HoodieCLI.tableMetadata.getActiveTimeline();
+    HoodieTableMetaClient metaClient = HoodieCLI.getTableMetaClient();
+    if (metaClient.getActiveTimeline().getSavePointTimeline().filterCompletedInstants().empty()) {
+      throw new HoodieException("There are no completed instants to run rollback");
+    }
+    HoodieActiveTimeline activeTimeline = metaClient.getActiveTimeline();
     HoodieTimeline timeline = activeTimeline.getCommitTimeline().filterCompletedInstants();
     HoodieInstant commitInstant = new HoodieInstant(false, HoodieTimeline.COMMIT_ACTION, commitTime);
 
@@ -115,7 +109,7 @@ public class SavepointsCommand implements CommandMarker {
 
     SparkLauncher sparkLauncher = SparkUtil.initLauncher(sparkPropertiesPath);
     sparkLauncher.addAppArgs(SparkMain.SparkCommand.ROLLBACK_TO_SAVEPOINT.toString(), commitTime,
-        HoodieCLI.tableMetadata.getBasePath());
+        metaClient.getBasePath());
     Process process = sparkLauncher.launch();
     InputStreamConsumer.captureOutput(process);
     int exitCode = process.waitFor();
@@ -127,11 +121,10 @@ public class SavepointsCommand implements CommandMarker {
     return "Savepoint " + commitTime + " rolled back";
   }
 
-
   @CliCommand(value = "savepoints refresh", help = "Refresh the savepoints")
-  public String refreshMetaClient() throws IOException {
+  public String refreshMetaClient() {
     HoodieCLI.refreshTableMetadata();
-    return "Metadata for table " + HoodieCLI.tableMetadata.getTableConfig().getTableName() + " refreshed.";
+    return "Metadata for table " + HoodieCLI.getTableMetaClient().getTableConfig().getTableName() + " refreshed.";
   }
 
   private static HoodieWriteClient createHoodieClient(JavaSparkContext jsc, String basePath) throws Exception {
@@ -139,6 +132,5 @@ public class SavepointsCommand implements CommandMarker {
         .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
     return new HoodieWriteClient(jsc, config, false);
   }
-
 
 }

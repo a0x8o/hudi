@@ -16,12 +16,14 @@
  * limitations under the License.
  */
 
+import org.apache.hudi.common.TestRawTripPayload;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.util.Option;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.hudi.common.TestRawTripPayload;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.util.Option;
 
 /**
  * Test utils for data source tests.
@@ -32,14 +34,22 @@ public class DataSourceTestUtils {
     try {
       String str = ((TestRawTripPayload) record.getData()).getJsonData();
       str = "{" + str.substring(str.indexOf("\"timestamp\":"));
-      return Option.of(str.replaceAll("}", ", \"partition\": \"" + record.getPartitionPath() + "\"}"));
+      // Remove the last } bracket
+      str = str.substring(0, str.length() - 1);
+      return Option.of(str + ", \"partition\": \"" + record.getPartitionPath() + "\"}");
     } catch (IOException e) {
       return Option.empty();
     }
   }
 
   public static List<String> convertToStringList(List<HoodieRecord> records) {
-    return records.stream().map(hr -> convertToString(hr)).filter(os -> os.isPresent()).map(os -> os.get())
+    return records.stream().map(DataSourceTestUtils::convertToString).filter(Option::isPresent).map(Option::get)
+        .collect(Collectors.toList());
+  }
+
+  public static List<String> convertKeysToStringList(List<HoodieKey> keys) {
+    return keys.stream()
+        .map(hr -> "{\"_row_key\":\"" + hr.getRecordKey() + "\",\"partition\":\"" + hr.getPartitionPath() + "\"}")
         .collect(Collectors.toList());
   }
 }

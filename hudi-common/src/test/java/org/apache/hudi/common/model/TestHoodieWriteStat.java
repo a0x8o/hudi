@@ -18,17 +18,21 @@
 
 package org.apache.hudi.common.model;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import org.apache.hudi.common.util.FSUtils;
+
+import org.apache.hadoop.fs.Path;
+import org.junit.Test;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
-import org.apache.hadoop.fs.Path;
-import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.util.FSUtils;
-import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
+/**
+ * Tests hoodie write stat {@link HoodieWriteStat}.
+ */
 public class TestHoodieWriteStat {
 
   @Test
@@ -41,7 +45,6 @@ public class TestHoodieWriteStat {
 
     Path basePath = new Path(basePathString);
     Path partitionPath = new Path(basePath, partitionPathString);
-    Path tempPath = new Path(basePath, HoodieTableMetaClient.TEMPFOLDER_NAME);
 
     Path finalizeFilePath = new Path(partitionPath, FSUtils.makeDataFileName(commitTime, writeToken, fileName));
     HoodieWriteStat writeStat = new HoodieWriteStat();

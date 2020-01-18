@@ -18,38 +18,40 @@
 
 package org.apache.hudi.utilities;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.HoodieWriteClient;
 import org.apache.hudi.common.util.FSUtils;
 import org.apache.hudi.common.util.TypedProperties;
 import org.apache.hudi.config.HoodieWriteConfig;
+
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
 public class HoodieCleaner {
 
-  private static volatile Logger log = LogManager.getLogger(HoodieCleaner.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieCleaner.class);
 
   /**
-   * Config for Cleaner
+   * Config for Cleaner.
    */
   private final Config cfg;
 
   /**
-   * Filesystem used
+   * Filesystem used.
    */
   private transient FileSystem fs;
 
   /**
-   * Spark context
+   * Spark context.
    */
   private transient JavaSparkContext jssc;
 
@@ -64,7 +66,7 @@ public class HoodieCleaner {
     this.fs = FSUtils.getFs(cfg.basePath, jssc.hadoopConfiguration());
     this.props = cfg.propsFilePath == null ? UtilHelpers.buildProperties(cfg.configs)
         : UtilHelpers.readConfig(fs, new Path(cfg.propsFilePath), cfg.configs).getConfig();
-    log.info("Creating Cleaner with configs : " + props.toString());
+    LOG.info("Creating Cleaner with configs : " + props.toString());
   }
 
   public void run() throws Exception {
@@ -80,7 +82,7 @@ public class HoodieCleaner {
 
   public static class Config implements Serializable {
 
-    @Parameter(names = {"--target-base-path"}, description = "base path for the hoodie dataset to be cleaner.",
+    @Parameter(names = {"--target-base-path"}, description = "base path for the hoodie table to be cleaner.",
         required = true)
     public String basePath;
 
@@ -101,7 +103,7 @@ public class HoodieCleaner {
 
   public static void main(String[] args) throws Exception {
     final Config cfg = new Config();
-    JCommander cmd = new JCommander(cfg, args);
+    JCommander cmd = new JCommander(cfg, null, args);
     if (cfg.help || args.length == 0) {
       cmd.usage();
       System.exit(1);

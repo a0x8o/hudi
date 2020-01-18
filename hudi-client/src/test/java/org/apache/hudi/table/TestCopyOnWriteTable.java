@@ -18,26 +18,13 @@
 
 package org.apache.hudi.table;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.HoodieClientTestHarness;
 import org.apache.hudi.WriteStatus;
-import org.apache.hudi.common.BloomFilter;
 import org.apache.hudi.common.HoodieClientTestUtils;
 import org.apache.hudi.common.HoodieTestDataGenerator;
 import org.apache.hudi.common.TestRawTripPayload;
 import org.apache.hudi.common.TestRawTripPayload.MetadataMergeWriteStatus;
+import org.apache.hudi.common.bloom.filter.BloomFilter;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
@@ -54,6 +41,9 @@ import org.apache.hudi.config.HoodieStorageConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.io.HoodieCreateHandle;
 import org.apache.hudi.table.HoodieCopyOnWriteTable.UpsertPartitioner;
+
+import org.apache.avro.generic.GenericRecord;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroReadSupport;
@@ -63,11 +53,25 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 import scala.Tuple2;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TestCopyOnWriteTable extends HoodieClientTestHarness {
 
-  protected static Logger log = LogManager.getLogger(TestCopyOnWriteTable.class);
+  private static final Logger LOG = LogManager.getLogger(TestCopyOnWriteTable.class);
 
   @Before
   public void setUp() throws Exception {
@@ -221,7 +225,7 @@ public class TestCopyOnWriteTable extends HoodieClientTestHarness {
         }
       }
     }
-    assertTrue(updatedParquetFile != null);
+    assertNotNull(updatedParquetFile);
     // Check whether the record has been updated
     Path updatedParquetFilePath = new Path(updatedParquetFile.getAbsolutePath());
     BloomFilter updatedFilter =
@@ -237,19 +241,18 @@ public class TestCopyOnWriteTable extends HoodieClientTestHarness {
     ParquetReader updatedReader = ParquetReader.builder(new AvroReadSupport<>(), updatedParquetFilePath).build();
     index = 0;
     while ((newRecord = (GenericRecord) updatedReader.read()) != null) {
-      assertTrue(newRecord.get("_row_key").toString().equals(records.get(index).getRecordKey()));
+      assertEquals(newRecord.get("_row_key").toString(), records.get(index).getRecordKey());
       if (index == 0) {
-        assertTrue(newRecord.get("number").toString().equals("15"));
+        assertEquals("15", newRecord.get("number").toString());
       }
       index++;
     }
     updatedReader.close();
     // Also check the numRecordsWritten
     WriteStatus writeStatus = statuses.get(0);
-    assertTrue("Should be only one file generated", statuses.size() == 1);
+    assertEquals("Should be only one file generated", 1, statuses.size());
     assertEquals(4, writeStatus.getStat().getNumWrites());// 3 rewritten records + 1 new record
   }
-
 
   private List<HoodieRecord> newHoodieRecords(int n, String time) throws Exception {
     List<HoodieRecord> records = new ArrayList<>();
@@ -380,13 +383,12 @@ public class TestCopyOnWriteTable extends HoodieClientTestHarness {
     int counts = 0;
     for (File file : new File(basePath + "/2016/01/31").listFiles()) {
       if (file.getName().endsWith(".parquet") && FSUtils.getCommitTime(file.getName()).equals(commitTime)) {
-        log.info(file.getName() + "-" + file.length());
+        LOG.info(file.getName() + "-" + file.length());
         counts++;
       }
     }
     assertEquals("If the number of records are more than 1150, then there should be a new file", 3, counts);
   }
-
 
   private UpsertPartitioner getUpsertPartitioner(int smallFileSize, int numInserts, int numUpdates, int fileSize,
       String testPartitionPath, boolean autoSplitInserts) throws Exception {
@@ -414,11 +416,10 @@ public class TestCopyOnWriteTable extends HoodieClientTestHarness {
     WorkloadProfile profile = new WorkloadProfile(jsc.parallelize(records));
     HoodieCopyOnWriteTable.UpsertPartitioner partitioner =
         (HoodieCopyOnWriteTable.UpsertPartitioner) table.getUpsertPartitioner(profile);
-    assertEquals("Update record should have gone to the 1 update partiton", 0, partitioner.getPartition(
+    assertEquals("Update record should have gone to the 1 update partition", 0, partitioner.getPartition(
         new Tuple2<>(updateRecords.get(0).getKey(), Option.ofNullable(updateRecords.get(0).getCurrentLocation()))));
     return partitioner;
   }
-
 
   @Test
   public void testUpsertPartitioner() throws Exception {
@@ -428,7 +429,6 @@ public class TestCopyOnWriteTable extends HoodieClientTestHarness {
     List<HoodieCopyOnWriteTable.InsertBucket> insertBuckets = partitioner.getInsertBuckets(testPartitionPath);
     assertEquals("Total of 2 insert buckets", 2, insertBuckets.size());
   }
-
 
   @Test
   public void testUpsertPartitionerWithSmallInsertHandling() throws Exception {

@@ -18,21 +18,25 @@
 
 package org.apache.hudi.common.util;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import org.apache.hudi.common.minicluster.HdfsTestService;
 
-import java.io.IOException;
-import java.io.PrintStream;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.hudi.common.minicluster.HdfsTestService;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.PrintStream;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 /**
- * Tests basic functionality of {@link DFSPropertiesConfiguration}
+ * Tests basic functionality of {@link DFSPropertiesConfiguration}.
  */
 public class TestDFSPropertiesConfiguration {
 
@@ -40,7 +44,6 @@ public class TestDFSPropertiesConfiguration {
   private static HdfsTestService hdfsTestService;
   private static MiniDFSCluster dfsCluster;
   private static DistributedFileSystem dfs;
-
 
   @BeforeClass
   public static void initClass() throws Exception {
@@ -84,7 +87,7 @@ public class TestDFSPropertiesConfiguration {
   }
 
   @Test
-  public void testParsing() throws IOException {
+  public void testParsing() {
     DFSPropertiesConfiguration cfg = new DFSPropertiesConfiguration(dfs, new Path(dfsBasePath + "/t1.props"));
     TypedProperties props = cfg.getConfig();
     assertEquals(5, props.size());
@@ -97,19 +100,19 @@ public class TestDFSPropertiesConfiguration {
 
     assertEquals(123, props.getInteger("int.prop"));
     assertEquals(113.4, props.getDouble("double.prop"), 0.001);
-    assertEquals(true, props.getBoolean("boolean.prop"));
+    assertTrue(props.getBoolean("boolean.prop"));
     assertEquals("str", props.getString("string.prop"));
     assertEquals(1354354354, props.getLong("long.prop"));
 
     assertEquals(123, props.getInteger("int.prop", 456));
     assertEquals(113.4, props.getDouble("double.prop", 223.4), 0.001);
-    assertEquals(true, props.getBoolean("boolean.prop", false));
+    assertTrue(props.getBoolean("boolean.prop", false));
     assertEquals("str", props.getString("string.prop", "default"));
     assertEquals(1354354354, props.getLong("long.prop", 8578494434L));
 
     assertEquals(456, props.getInteger("bad.int.prop", 456));
     assertEquals(223.4, props.getDouble("bad.double.prop", 223.4), 0.001);
-    assertEquals(false, props.getBoolean("bad.boolean.prop", false));
+    assertFalse(props.getBoolean("bad.boolean.prop", false));
     assertEquals("default", props.getString("bad.string.prop", "default"));
     assertEquals(8578494434L, props.getLong("bad.long.prop", 8578494434L));
   }
@@ -121,7 +124,7 @@ public class TestDFSPropertiesConfiguration {
 
     assertEquals(123, props.getInteger("int.prop"));
     assertEquals(243.4, props.getDouble("double.prop"), 0.001);
-    assertEquals(true, props.getBoolean("boolean.prop"));
+    assertTrue(props.getBoolean("boolean.prop"));
     assertEquals("t3.value", props.getString("string.prop"));
     assertEquals(1354354354, props.getLong("long.prop"));
 

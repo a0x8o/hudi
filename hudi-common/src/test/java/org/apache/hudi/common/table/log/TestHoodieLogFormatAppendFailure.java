@@ -18,16 +18,14 @@
 
 package org.apache.hudi.common.table.log;
 
-import static org.apache.hudi.common.util.SchemaTestUtil.getSimpleSchema;
+import org.apache.hudi.common.minicluster.MiniClusterUtil;
+import org.apache.hudi.common.model.HoodieArchivedLogFile;
+import org.apache.hudi.common.table.log.HoodieLogFormat.Writer;
+import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
+import org.apache.hudi.common.table.log.block.HoodieLogBlock;
+import org.apache.hudi.common.util.SchemaTestUtil;
 
 import com.google.common.collect.Maps;
-import java.io.File;
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeoutException;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -39,21 +37,25 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
-import org.apache.hudi.common.minicluster.MiniClusterUtil;
-import org.apache.hudi.common.model.HoodieArchivedLogFile;
-import org.apache.hudi.common.table.log.HoodieLogFormat.Writer;
-import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
-import org.apache.hudi.common.table.log.block.HoodieLogBlock;
-import org.apache.hudi.common.util.SchemaTestUtil;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeoutException;
+
+import static org.apache.hudi.common.util.SchemaTestUtil.getSimpleSchema;
+
 /**
  * This class is intentionally using a different way of setting up the MiniDFSCluster and not relying on
  * {@link MiniClusterUtil} to reproduce append() issue : https://issues.apache.org/jira/browse/HDFS-6325 Reference :
- * https://issues.apache.org/jira/secure/attachment/12645053/HDFS-6325.patch
+ * https://issues.apache.org/jira/secure/attachment/12645053/HDFS-6325.patch.
  */
 public class TestHoodieLogFormatAppendFailure {
 
@@ -101,7 +103,7 @@ public class TestHoodieLogFormatAppendFailure {
     HoodieAvroDataBlock dataBlock = new HoodieAvroDataBlock(records, header);
 
     Writer writer = HoodieLogFormat.newWriterBuilder().onParentPath(testPath)
-        .withFileExtension(HoodieArchivedLogFile.ARCHIVE_EXTENSION).withFileId("commits" + ".archive")
+        .withFileExtension(HoodieArchivedLogFile.ARCHIVE_EXTENSION).withFileId("commits.archive")
         .overBaseCommit("").withFs(fs).build();
 
     writer = writer.appendBlock(dataBlock);
@@ -132,10 +134,10 @@ public class TestHoodieLogFormatAppendFailure {
     // Opening a new Writer right now will throw IOException. The code should handle this, rollover the logfile and
     // return a new writer with a bumped up logVersion
     writer = HoodieLogFormat.newWriterBuilder().onParentPath(testPath)
-        .withFileExtension(HoodieArchivedLogFile.ARCHIVE_EXTENSION).withFileId("commits" + ".archive")
+        .withFileExtension(HoodieArchivedLogFile.ARCHIVE_EXTENSION).withFileId("commits.archive")
         .overBaseCommit("").withFs(fs).build();
     // The log version should be different for this new writer
-    Assert.assertFalse(writer.getLogFile().getLogVersion() == logFileVersion);
+    Assert.assertNotEquals(writer.getLogFile().getLogVersion(), logFileVersion);
   }
 
 }

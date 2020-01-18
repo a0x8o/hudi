@@ -18,6 +18,18 @@
 
 package org.apache.hudi;
 
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
+import org.apache.hudi.common.util.HoodieAvroUtils;
+import org.apache.hudi.common.util.Option;
+import org.apache.hudi.exception.HoodieIOException;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.spark.sql.Row;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,14 +41,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.hudi.common.model.HoodieKey;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.util.HoodieAvroUtils;
-import org.apache.hudi.common.util.Option;
-import org.apache.hudi.exception.HoodieIOException;
 
 /**
  * Class to be used in quickstart guide for generating inserts and updates against a corpus. Test data uses a toy Uber
@@ -51,11 +55,11 @@ public class QuickstartUtils {
 
     private static final String[] DEFAULT_PARTITION_PATHS =
         {DEFAULT_FIRST_PARTITION_PATH, DEFAULT_SECOND_PARTITION_PATH, DEFAULT_THIRD_PARTITION_PATH};
-    static String TRIP_EXAMPLE_SCHEMA = "{\"type\": \"record\"," + "\"name\": \"triprec\"," + "\"fields\": [ "
-        + "{\"name\": \"ts\",\"type\": \"double\"}," + "{\"name\": \"uuid\", \"type\": \"string\"},"
-        + "{\"name\": \"rider\", \"type\": \"string\"}," + "{\"name\": \"driver\", \"type\": \"string\"},"
-        + "{\"name\": \"begin_lat\", \"type\": \"double\"}," + "{\"name\": \"begin_lon\", \"type\": \"double\"},"
-        + "{\"name\": \"end_lat\", \"type\": \"double\"}," + "{\"name\": \"end_lon\", \"type\": \"double\"},"
+    static String TRIP_EXAMPLE_SCHEMA = "{\"type\": \"record\",\"name\": \"triprec\",\"fields\": [ "
+        + "{\"name\": \"ts\",\"type\": \"double\"},{\"name\": \"uuid\", \"type\": \"string\"},"
+        + "{\"name\": \"rider\", \"type\": \"string\"},{\"name\": \"driver\", \"type\": \"string\"},"
+        + "{\"name\": \"begin_lat\", \"type\": \"double\"},{\"name\": \"begin_lon\", \"type\": \"double\"},"
+        + "{\"name\": \"end_lat\", \"type\": \"double\"},{\"name\": \"end_lon\", \"type\": \"double\"},"
         + "{\"name\":\"fare\",\"type\": \"double\"}]}";
     static Schema avroSchema = new Schema.Parser().parse(TRIP_EXAMPLE_SCHEMA);
 
@@ -91,7 +95,7 @@ public class QuickstartUtils {
     }
 
     public static GenericRecord generateGenericRecord(String rowKey, String riderName, String driverName,
-        double timestamp) {
+                                                      double timestamp) {
       GenericRecord rec = new GenericData.Record(avroSchema);
       rec.put("uuid", rowKey);
       rec.put("ts", timestamp);
@@ -160,11 +164,23 @@ public class QuickstartUtils {
       String randomString = generateRandomString();
       List<HoodieRecord> updates = new ArrayList<>();
       for (int i = 0; i < n; i++) {
-        HoodieKey key = existingKeys.get(rand.nextInt(numExistingKeys - 1));
+        HoodieKey key = existingKeys.get(rand.nextInt(numExistingKeys));
         HoodieRecord record = generateUpdateRecord(key, randomString);
         updates.add(record);
       }
       return updates;
+    }
+
+    /**
+     * Generates delete records for the passed in rows.
+     *
+     * @param rows List of {@link Row}s for which delete record need to be generated
+     * @return list of hoodie records to delete
+     */
+    public List<String> generateDeletes(List<Row> rows) {
+      return rows.stream().map(row ->
+          convertToString(row.getAs("uuid"), row.getAs("partitionPath"))).filter(os -> os.isPresent()).map(os -> os.get())
+          .collect(Collectors.toList());
     }
 
     public void close() {
@@ -182,6 +198,16 @@ public class QuickstartUtils {
     } catch (IOException e) {
       return Option.empty();
     }
+  }
+
+  private static Option<String> convertToString(String uuid, String partitionPath) {
+    StringBuffer stringBuffer = new StringBuffer();
+    stringBuffer.append("{");
+    stringBuffer.append("\"ts\": 0.0,");
+    stringBuffer.append("\"uuid\": \"" + uuid + "\",");
+    stringBuffer.append("\"partitionpath\": \"" + partitionPath + "\"");
+    stringBuffer.append("}");
+    return Option.of(stringBuffer.toString());
   }
 
   public static List<String> convertToStringList(List<HoodieRecord> records) {

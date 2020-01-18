@@ -18,14 +18,6 @@
 
 package org.apache.hudi.cli.commands;
 
-import static org.apache.hudi.common.table.HoodieTimeline.ROLLBACK_ACTION;
-
-import com.google.common.collect.ImmutableSet;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.stream.Stream;
 import org.apache.hudi.avro.model.HoodieRollbackMetadata;
 import org.apache.hudi.cli.HoodieCLI;
 import org.apache.hudi.cli.HoodiePrintHelper;
@@ -37,11 +29,24 @@ import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieInstant.State;
 import org.apache.hudi.common.util.AvroUtils;
 import org.apache.hudi.common.util.collection.Pair;
+
+import com.google.common.collect.ImmutableSet;
 import org.springframework.shell.core.CommandMarker;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static org.apache.hudi.common.table.HoodieTimeline.ROLLBACK_ACTION;
+
+/**
+ * CLI command to display rollback options.
+ */
 @Component
 public class RollbacksCommand implements CommandMarker {
 
@@ -53,7 +58,7 @@ public class RollbacksCommand implements CommandMarker {
       @CliOption(key = {"headeronly"}, help = "Print Header Only",
           unspecifiedDefaultValue = "false") final boolean headerOnly)
       throws IOException {
-    HoodieActiveTimeline activeTimeline = new RollbackTimeline(HoodieCLI.tableMetadata);
+    HoodieActiveTimeline activeTimeline = new RollbackTimeline(HoodieCLI.getTableMetaClient());
     HoodieTimeline rollback = activeTimeline.getRollbackTimeline().filterCompletedInstants();
 
     final List<Comparable[]> rows = new ArrayList<>();
@@ -89,25 +94,23 @@ public class RollbacksCommand implements CommandMarker {
       @CliOption(key = {"headeronly"}, help = "Print Header Only",
           unspecifiedDefaultValue = "false") final boolean headerOnly)
       throws IOException {
-    HoodieActiveTimeline activeTimeline = new RollbackTimeline(HoodieCLI.tableMetadata);
+    HoodieActiveTimeline activeTimeline = new RollbackTimeline(HoodieCLI.getTableMetaClient());
     final List<Comparable[]> rows = new ArrayList<>();
     HoodieRollbackMetadata metadata = AvroUtils.deserializeAvroMetadata(
         activeTimeline.getInstantDetails(new HoodieInstant(State.COMPLETED, ROLLBACK_ACTION, rollbackInstant)).get(),
         HoodieRollbackMetadata.class);
-    metadata.getPartitionMetadata().entrySet().forEach(e -> {
-      Stream
-          .concat(e.getValue().getSuccessDeleteFiles().stream().map(f -> Pair.of(f, true)),
-              e.getValue().getFailedDeleteFiles().stream().map(f -> Pair.of(f, false)))
-          .forEach(fileWithDeleteStatus -> {
-            Comparable[] row = new Comparable[5];
-            row[0] = metadata.getStartRollbackTime();
-            row[1] = metadata.getCommitsRollback().toString();
-            row[2] = e.getKey();
-            row[3] = fileWithDeleteStatus.getLeft();
-            row[4] = fileWithDeleteStatus.getRight();
-            rows.add(row);
-          });
-    });
+    metadata.getPartitionMetadata().forEach((key, value) -> Stream
+            .concat(value.getSuccessDeleteFiles().stream().map(f -> Pair.of(f, true)),
+                    value.getFailedDeleteFiles().stream().map(f -> Pair.of(f, false)))
+            .forEach(fileWithDeleteStatus -> {
+              Comparable[] row = new Comparable[5];
+              row[0] = metadata.getStartRollbackTime();
+              row[1] = metadata.getCommitsRollback().toString();
+              row[2] = key;
+              row[3] = fileWithDeleteStatus.getLeft();
+              row[4] = fileWithDeleteStatus.getRight();
+              rows.add(row);
+            }));
 
     TableHeader header = new TableHeader().addTableHeaderField("Instant").addTableHeaderField("Rolledback Instants")
         .addTableHeaderField("Partition").addTableHeaderField("Deleted File").addTableHeaderField("Succeeded");
@@ -115,7 +118,7 @@ public class RollbacksCommand implements CommandMarker {
   }
 
   /**
-   * An Active timeline containing only rollbacks
+   * An Active timeline containing only rollbacks.
    */
   class RollbackTimeline extends HoodieActiveTimeline {
 

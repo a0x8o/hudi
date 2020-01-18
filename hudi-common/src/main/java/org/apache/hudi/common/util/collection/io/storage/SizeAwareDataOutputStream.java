@@ -18,13 +18,14 @@
 
 package org.apache.hudi.common.util.collection.io.storage;
 
+import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Wrapper for DataOutpuStream to keep track of number of bytes written
+ * Wrapper for DataOutpuStream to keep track of number of bytes written.
  */
 public class SizeAwareDataOutputStream {
 
@@ -33,8 +34,8 @@ public class SizeAwareDataOutputStream {
   // Counter to keep track of number of bytes written
   private AtomicLong size;
 
-  public SizeAwareDataOutputStream(FileOutputStream fileOutputStream) {
-    this.outputStream = new DataOutputStream(fileOutputStream);
+  public SizeAwareDataOutputStream(FileOutputStream fileOutputStream, int cacheSize) {
+    this.outputStream = new DataOutputStream(new BufferedOutputStream(fileOutputStream, cacheSize));
     this.size = new AtomicLong(0L);
   }
 

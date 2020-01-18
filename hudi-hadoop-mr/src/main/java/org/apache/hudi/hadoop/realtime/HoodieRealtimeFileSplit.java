@@ -18,20 +18,21 @@
 
 package org.apache.hudi.hadoop.realtime;
 
+import org.apache.hadoop.mapred.FileSplit;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.hadoop.mapred.FileSplit;
 
 /**
  * Filesplit that wraps the base split and a list of log files to merge deltas from.
  */
 public class HoodieRealtimeFileSplit extends FileSplit {
 
-  private List<String> deltaFilePaths;
+  private List<String> deltaLogPaths;
 
   private String maxCommitTime;
 
@@ -41,16 +42,16 @@ public class HoodieRealtimeFileSplit extends FileSplit {
     super();
   }
 
-  public HoodieRealtimeFileSplit(FileSplit baseSplit, String basePath, List<String> deltaLogFiles, String maxCommitTime)
+  public HoodieRealtimeFileSplit(FileSplit baseSplit, String basePath, List<String> deltaLogPaths, String maxCommitTime)
       throws IOException {
     super(baseSplit.getPath(), baseSplit.getStart(), baseSplit.getLength(), baseSplit.getLocations());
-    this.deltaFilePaths = deltaLogFiles;
+    this.deltaLogPaths = deltaLogPaths;
     this.maxCommitTime = maxCommitTime;
     this.basePath = basePath;
   }
 
-  public List<String> getDeltaFilePaths() {
-    return deltaFilePaths;
+  public List<String> getDeltaLogPaths() {
+    return deltaLogPaths;
   }
 
   public String getMaxCommitTime() {
@@ -73,14 +74,13 @@ public class HoodieRealtimeFileSplit extends FileSplit {
     return new String(bytes, StandardCharsets.UTF_8);
   }
 
-
   @Override
   public void write(DataOutput out) throws IOException {
     super.write(out);
     writeString(basePath, out);
     writeString(maxCommitTime, out);
-    out.writeInt(deltaFilePaths.size());
-    for (String logFilePath : deltaFilePaths) {
+    out.writeInt(deltaLogPaths.size());
+    for (String logFilePath : deltaLogPaths) {
       writeString(logFilePath, out);
     }
   }
@@ -91,15 +91,15 @@ public class HoodieRealtimeFileSplit extends FileSplit {
     basePath = readString(in);
     maxCommitTime = readString(in);
     int totalLogFiles = in.readInt();
-    deltaFilePaths = new ArrayList<>(totalLogFiles);
+    deltaLogPaths = new ArrayList<>(totalLogFiles);
     for (int i = 0; i < totalLogFiles; i++) {
-      deltaFilePaths.add(readString(in));
+      deltaLogPaths.add(readString(in));
     }
   }
 
   @Override
   public String toString() {
-    return "HoodieRealtimeFileSplit{" + "DataPath=" + getPath() + ", deltaFilePaths=" + deltaFilePaths
+    return "HoodieRealtimeFileSplit{DataPath=" + getPath() + ", deltaLogPaths=" + deltaLogPaths
         + ", maxCommitTime='" + maxCommitTime + '\'' + ", basePath='" + basePath + '\'' + '}';
   }
 }

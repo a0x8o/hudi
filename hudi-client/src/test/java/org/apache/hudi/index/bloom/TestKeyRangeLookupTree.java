@@ -18,8 +18,7 @@
 
 package org.apache.hudi.index.bloom;
 
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertTrue;
+import org.junit.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,10 +26,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
-import org.junit.Test;
+
+import static junit.framework.TestCase.assertEquals;
 
 /**
- * Tests {@link KeyRangeLookupTree}
+ * Tests {@link KeyRangeLookupTree}.
  */
 public class TestKeyRangeLookupTree {
 
@@ -58,7 +58,7 @@ public class TestKeyRangeLookupTree {
   }
 
   /**
-   * Tests for many entries in the tree with same start value and different end values
+   * Tests for many entries in the tree with same start value and different end values.
    */
   @Test
   public void testFileGroupLookUpManyEntriesWithSameStartValue() {
@@ -77,7 +77,7 @@ public class TestKeyRangeLookupTree {
   }
 
   /**
-   * Tests for many duplicte entries in the tree
+   * Tests for many duplicte entries in the tree.
    */
   @Test
   public void testFileGroupLookUpManyDulicateEntries() {
@@ -151,13 +151,13 @@ public class TestKeyRangeLookupTree {
       if (!expectedMatches.containsKey(iStr)) {
         assertEquals(Collections.EMPTY_SET, keyRangeLookupTree.getMatchingIndexFiles(iStr));
       } else {
-        assertTrue(expectedMatches.get(iStr).equals(keyRangeLookupTree.getMatchingIndexFiles(iStr)));
+        assertEquals(expectedMatches.get(iStr), keyRangeLookupTree.getMatchingIndexFiles(iStr));
       }
     }
   }
 
   /**
-   * Updates the expected matches for a given {@link KeyRangeNode}
+   * Updates the expected matches for a given {@link KeyRangeNode}.
    *
    * @param toInsert the {@link KeyRangeNode} to be inserted
    */

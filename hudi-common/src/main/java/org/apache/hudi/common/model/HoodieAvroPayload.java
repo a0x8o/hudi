@@ -18,17 +18,19 @@
 
 package org.apache.hudi.common.model;
 
-import java.io.IOException;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.hudi.common.util.HoodieAvroUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.exception.HoodieIOException;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+
+import java.io.IOException;
+
 /**
  * This is a payload to wrap a existing Hoodie Avro Record. Useful to create a HoodieRecord over existing GenericRecords
- * in a hoodie datasets (useful in compactions)
+ * in a hoodie tables (useful in compactions)
  */
 public class HoodieAvroPayload implements HoodieRecordPayload<HoodieAvroPayload> {
 

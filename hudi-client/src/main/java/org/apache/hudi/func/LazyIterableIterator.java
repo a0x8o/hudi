@@ -43,7 +43,7 @@ public abstract class LazyIterableIterator<I, O> implements Iterable<O>, Iterato
   }
 
   /**
-   * Called once, before any elements are processed
+   * Called once, before any elements are processed.
    */
   protected abstract void start();
 
@@ -51,7 +51,6 @@ public abstract class LazyIterableIterator<I, O> implements Iterable<O>, Iterato
    * Block computation to be overwritten by sub classes.
    */
   protected abstract O computeNext();
-
 
   /**
    * Called once, after all elements are processed.

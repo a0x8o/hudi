@@ -18,16 +18,18 @@
 
 package org.apache.hudi.index.bloom;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import org.apache.hudi.common.util.collection.Pair;
+
+import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.hudi.common.util.collection.Pair;
-import org.junit.Test;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 public class TestBucketizedBloomCheckPartitioner {
 
@@ -60,11 +62,11 @@ public class TestBucketizedBloomCheckPartitioner {
     };
     BucketizedBloomCheckPartitioner partitioner = new BucketizedBloomCheckPartitioner(100, comparisons1, 10);
     Map<String, List<Integer>> assignments = partitioner.getFileGroupToPartitions();
-    assignments.entrySet().stream().forEach(e -> assertEquals(10, e.getValue().size()));
+    assignments.forEach((key, value) -> assertEquals(10, value.size()));
     Map<Integer, Long> partitionToNumBuckets =
         assignments.entrySet().stream().flatMap(e -> e.getValue().stream().map(p -> Pair.of(p, e.getKey())))
             .collect(Collectors.groupingBy(Pair::getLeft, Collectors.counting()));
-    partitionToNumBuckets.entrySet().stream().forEach(e -> assertEquals(1L, e.getValue().longValue()));
+    partitionToNumBuckets.forEach((key, value) -> assertEquals(1L, value.longValue()));
   }
 
   @Test

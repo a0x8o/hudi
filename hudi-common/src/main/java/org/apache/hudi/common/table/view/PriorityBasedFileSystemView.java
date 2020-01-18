@@ -18,12 +18,9 @@
 
 package org.apache.hudi.common.table.view;
 
-import java.io.Serializable;
-import java.util.List;
-import java.util.stream.Stream;
 import org.apache.hudi.common.model.CompactionOperation;
 import org.apache.hudi.common.model.FileSlice;
-import org.apache.hudi.common.model.HoodieDataFile;
+import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieFileGroup;
 import org.apache.hudi.common.table.HoodieTimeline;
 import org.apache.hudi.common.table.SyncableFileSystemView;
@@ -34,8 +31,13 @@ import org.apache.hudi.common.util.Functions.Function2;
 import org.apache.hudi.common.util.Functions.Function3;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
+
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * A file system view which proxies request to a preferred File System View implementation. In case of error, flip all
@@ -43,7 +45,7 @@ import org.apache.log4j.Logger;
  */
 public class PriorityBasedFileSystemView implements SyncableFileSystemView, Serializable {
 
-  private static Logger log = LogManager.getLogger(PriorityBasedFileSystemView.class);
+  private static final Logger LOG = LogManager.getLogger(PriorityBasedFileSystemView.class);
 
   private final SyncableFileSystemView preferredView;
   private final SyncableFileSystemView secondaryView;
@@ -57,13 +59,13 @@ public class PriorityBasedFileSystemView implements SyncableFileSystemView, Seri
 
   private <R> R execute(Function0<R> preferredFunction, Function0<R> secondaryFunction) {
     if (errorOnPreferredView) {
-      log.warn("Routing request to secondary file-system view");
+      LOG.warn("Routing request to secondary file-system view");
       return secondaryFunction.apply();
     } else {
       try {
         return preferredFunction.apply();
       } catch (RuntimeException re) {
-        log.error("Got error running preferred function. Trying secondary", re);
+        LOG.error("Got error running preferred function. Trying secondary", re);
         errorOnPreferredView = true;
         return secondaryFunction.apply();
       }
@@ -72,13 +74,13 @@ public class PriorityBasedFileSystemView implements SyncableFileSystemView, Seri
 
   private <T1, R> R execute(T1 val, Function1<T1, R> preferredFunction, Function1<T1, R> secondaryFunction) {
     if (errorOnPreferredView) {
-      log.warn("Routing request to secondary file-system view");
+      LOG.warn("Routing request to secondary file-system view");
       return secondaryFunction.apply(val);
     } else {
       try {
         return preferredFunction.apply(val);
       } catch (RuntimeException re) {
-        log.error("Got error running preferred function. Trying secondary", re);
+        LOG.error("Got error running preferred function. Trying secondary", re);
         errorOnPreferredView = true;
         return secondaryFunction.apply(val);
       }
@@ -88,13 +90,13 @@ public class PriorityBasedFileSystemView implements SyncableFileSystemView, Seri
   private <T1, T2, R> R execute(T1 val, T2 val2, Function2<T1, T2, R> preferredFunction,
       Function2<T1, T2, R> secondaryFunction) {
     if (errorOnPreferredView) {
-      log.warn("Routing request to secondary file-system view");
+      LOG.warn("Routing request to secondary file-system view");
       return secondaryFunction.apply(val, val2);
     } else {
       try {
         return preferredFunction.apply(val, val2);
       } catch (RuntimeException re) {
-        log.error("Got error running preferred function. Trying secondary", re);
+        LOG.error("Got error running preferred function. Trying secondary", re);
         errorOnPreferredView = true;
         return secondaryFunction.apply(val, val2);
       }
@@ -104,13 +106,13 @@ public class PriorityBasedFileSystemView implements SyncableFileSystemView, Seri
   private <T1, T2, T3, R> R execute(T1 val, T2 val2, T3 val3, Function3<T1, T2, T3, R> preferredFunction,
       Function3<T1, T2, T3, R> secondaryFunction) {
     if (errorOnPreferredView) {
-      log.warn("Routing request to secondary file-system view");
+      LOG.warn("Routing request to secondary file-system view");
       return secondaryFunction.apply(val, val2, val3);
     } else {
       try {
         return preferredFunction.apply(val, val2, val3);
       } catch (RuntimeException re) {
-        log.error("Got error running preferred function. Trying secondary", re);
+        LOG.error("Got error running preferred function. Trying secondary", re);
         errorOnPreferredView = true;
         return secondaryFunction.apply(val, val2, val3);
       }
@@ -118,39 +120,39 @@ public class PriorityBasedFileSystemView implements SyncableFileSystemView, Seri
   }
 
   @Override
-  public Stream<HoodieDataFile> getLatestDataFiles(String partitionPath) {
-    return execute(partitionPath, preferredView::getLatestDataFiles, secondaryView::getLatestDataFiles);
+  public Stream<HoodieBaseFile> getLatestBaseFiles(String partitionPath) {
+    return execute(partitionPath, preferredView::getLatestBaseFiles, secondaryView::getLatestBaseFiles);
   }
 
   @Override
-  public Stream<HoodieDataFile> getLatestDataFiles() {
-    return execute(preferredView::getLatestDataFiles, secondaryView::getLatestDataFiles);
+  public Stream<HoodieBaseFile> getLatestBaseFiles() {
+    return execute(preferredView::getLatestBaseFiles, secondaryView::getLatestBaseFiles);
   }
 
   @Override
-  public Stream<HoodieDataFile> getLatestDataFilesBeforeOrOn(String partitionPath, String maxCommitTime) {
-    return execute(partitionPath, maxCommitTime, preferredView::getLatestDataFilesBeforeOrOn,
-        secondaryView::getLatestDataFilesBeforeOrOn);
+  public Stream<HoodieBaseFile> getLatestBaseFilesBeforeOrOn(String partitionPath, String maxCommitTime) {
+    return execute(partitionPath, maxCommitTime, preferredView::getLatestBaseFilesBeforeOrOn,
+        secondaryView::getLatestBaseFilesBeforeOrOn);
   }
 
   @Override
-  public Option<HoodieDataFile> getLatestDataFile(String partitionPath, String fileId) {
-    return execute(partitionPath, fileId, preferredView::getLatestDataFile, secondaryView::getLatestDataFile);
+  public Option<HoodieBaseFile> getLatestBaseFile(String partitionPath, String fileId) {
+    return execute(partitionPath, fileId, preferredView::getLatestBaseFile, secondaryView::getLatestBaseFile);
   }
 
   @Override
-  public Option<HoodieDataFile> getDataFileOn(String partitionPath, String instantTime, String fileId) {
-    return execute(partitionPath, instantTime, fileId, preferredView::getDataFileOn, secondaryView::getDataFileOn);
+  public Option<HoodieBaseFile> getBaseFileOn(String partitionPath, String instantTime, String fileId) {
+    return execute(partitionPath, instantTime, fileId, preferredView::getBaseFileOn, secondaryView::getBaseFileOn);
   }
 
   @Override
-  public Stream<HoodieDataFile> getLatestDataFilesInRange(List<String> commitsToReturn) {
-    return execute(commitsToReturn, preferredView::getLatestDataFilesInRange, secondaryView::getLatestDataFilesInRange);
+  public Stream<HoodieBaseFile> getLatestBaseFilesInRange(List<String> commitsToReturn) {
+    return execute(commitsToReturn, preferredView::getLatestBaseFilesInRange, secondaryView::getLatestBaseFilesInRange);
   }
 
   @Override
-  public Stream<HoodieDataFile> getAllDataFiles(String partitionPath) {
-    return execute(partitionPath, preferredView::getAllDataFiles, secondaryView::getAllDataFiles);
+  public Stream<HoodieBaseFile> getAllBaseFiles(String partitionPath) {
+    return execute(partitionPath, preferredView::getAllBaseFiles, secondaryView::getAllBaseFiles);
   }
 
   @Override

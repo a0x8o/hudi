@@ -18,13 +18,15 @@
 
 package org.apache.hudi.utilities.schema;
 
-import java.io.Serializable;
-import org.apache.avro.Schema;
 import org.apache.hudi.common.util.TypedProperties;
+
+import org.apache.avro.Schema;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import java.io.Serializable;
+
 /**
- * Class to provide schema for reading data and also writing into a Hoodie table
+ * Class to provide schema for reading data and also writing into a Hoodie table.
  */
 public abstract class SchemaProvider implements Serializable {
 
@@ -40,7 +42,7 @@ public abstract class SchemaProvider implements Serializable {
   public abstract Schema getSourceSchema();
 
   public Schema getTargetSchema() {
-    // by default, use source schema as target for hoodie dataset as well
+    // by default, use source schema as target for hoodie table as well
     return getSourceSchema();
   }
 }

@@ -18,15 +18,16 @@
 
 package org.apache.hudi.common.util;
 
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.HashSet;
 import java.util.Set;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
 
 /**
  * A simplified versions of Apache commons - PropertiesConfiguration, that supports limited field types and hierarchical
@@ -40,7 +41,7 @@ import org.apache.log4j.Logger;
  */
 public class DFSPropertiesConfiguration {
 
-  private static volatile Logger log = LogManager.getLogger(DFSPropertiesConfiguration.class);
+  private static final Logger LOG = LogManager.getLogger(DFSPropertiesConfiguration.class);
 
   private final FileSystem fs;
 
@@ -59,6 +60,17 @@ public class DFSPropertiesConfiguration {
     visitFile(rootFile);
   }
 
+  public DFSPropertiesConfiguration(FileSystem fs, Path rootFile) {
+    this(fs, rootFile, new TypedProperties());
+  }
+
+  public DFSPropertiesConfiguration() {
+    this.fs = null;
+    this.rootFile = null;
+    this.props = new TypedProperties();
+    this.visitedFiles = new HashSet<>();
+  }
+
   private String[] splitProperty(String line) {
     int ind = line.indexOf('=');
     String k = line.substring(0, ind).trim();
@@ -75,13 +87,13 @@ public class DFSPropertiesConfiguration {
       BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(file)));
       addProperties(reader);
     } catch (IOException ioe) {
-      log.error("Error reading in properies from dfs", ioe);
+      LOG.error("Error reading in properies from dfs", ioe);
       throw new IllegalArgumentException("Cannot read properties from dfs", ioe);
     }
   }
 
   /**
-   * Add properties from input stream
+   * Add properties from input stream.
    * 
    * @param reader Buffered Reader
    * @throws IOException
@@ -103,10 +115,6 @@ public class DFSPropertiesConfiguration {
     } finally {
       reader.close();
     }
-  }
-
-  public DFSPropertiesConfiguration(FileSystem fs, Path rootFile) {
-    this(fs, rootFile, new TypedProperties());
   }
 
   public TypedProperties getConfig() {

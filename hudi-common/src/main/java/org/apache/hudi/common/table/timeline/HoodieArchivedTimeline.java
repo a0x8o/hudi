@@ -18,6 +18,17 @@
 
 package org.apache.hudi.common.table.timeline;
 
+import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.HoodieTimeline;
+import org.apache.hudi.common.util.Option;
+import org.apache.hudi.exception.HoodieIOException;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Arrays;
@@ -25,18 +36,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.Text;
-import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.table.HoodieTimeline;
-import org.apache.hudi.common.util.Option;
-import org.apache.hudi.exception.HoodieIOException;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
 
 /**
- * Represents the Archived Timeline for the HoodieDataset. Instants for the last 12 hours (configurable) is in the
+ * Represents the Archived Timeline for the Hoodie table. Instants for the last 12 hours (configurable) is in the
  * ActiveTimeline and the rest are in ArchivedTimeline.
  * <p>
  * </p>
@@ -52,7 +54,7 @@ public class HoodieArchivedTimeline extends HoodieDefaultTimeline {
   private HoodieTableMetaClient metaClient;
   private Map<String, byte[]> readCommits = new HashMap<>();
 
-  private static final transient Logger log = LogManager.getLogger(HoodieArchivedTimeline.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieArchivedTimeline.class);
 
   public HoodieArchivedTimeline(HoodieTableMetaClient metaClient) {
     // Read back the commits to make sure
@@ -92,7 +94,6 @@ public class HoodieArchivedTimeline extends HoodieDefaultTimeline {
   private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
   }
-
 
   public static Path getArchiveLogPath(String archiveFolder) {
     return new Path(archiveFolder, HOODIE_COMMIT_ARCHIVE_LOG_FILE);

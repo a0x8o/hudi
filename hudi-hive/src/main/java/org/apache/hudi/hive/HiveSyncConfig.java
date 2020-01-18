@@ -19,6 +19,7 @@
 package org.apache.hudi.hive;
 
 import com.beust.jcommander.Parameter;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,18 +44,18 @@ public class HiveSyncConfig implements Serializable {
   @Parameter(names = {"--jdbc-url"}, description = "Hive jdbc connect url", required = true)
   public String jdbcUrl;
 
-  @Parameter(names = {"--base-path"}, description = "Basepath of hoodie dataset to sync", required = true)
+  @Parameter(names = {"--base-path"}, description = "Basepath of hoodie table to sync", required = true)
   public String basePath;
 
   @Parameter(names = "--partitioned-by", description = "Fields in the schema partitioned by")
   public List<String> partitionFields = new ArrayList<>();
 
-  @Parameter(names = "--partition-value-extractor", description = "Class which implements " + "PartitionValueExtractor "
-      + "to extract the partition " + "values from HDFS path")
+  @Parameter(names = "--partition-value-extractor", description = "Class which implements PartitionValueExtractor "
+      + "to extract the partition values from HDFS path")
   public String partitionValueExtractorClass = SlashEncodedDayPartitionValueExtractor.class.getName();
 
   @Parameter(names = {"--assume-date-partitioning"}, description = "Assume standard yyyy/mm/dd partitioning, this"
-      + " exists to support " + "backward compatibility. If" + " you use hoodie 0.3.x, do " + "not set this parameter")
+      + " exists to support backward compatibility. If you use hoodie 0.3.x, do not set this parameter")
   public Boolean assumeDatePartitioning = false;
 
   @Parameter(names = {"--use-pre-apache-input-format"},
@@ -66,6 +67,9 @@ public class HiveSyncConfig implements Serializable {
 
   @Parameter(names = {"--use-jdbc"}, description = "Hive jdbc connect url")
   public Boolean useJdbc = true;
+
+  @Parameter(names = {"--skip-ro-suffix"}, description = "Skip the `_ro` suffix for Read optimized table, when registering")
+  public Boolean skipROSuffix = false;
 
   @Parameter(names = {"--help", "-h"}, help = true)
   public Boolean help = false;
@@ -87,7 +91,7 @@ public class HiveSyncConfig implements Serializable {
 
   @Override
   public String toString() {
-    return "HiveSyncConfig{" + "databaseName='" + databaseName + '\'' + ", tableName='" + tableName + '\''
+    return "HiveSyncConfig{databaseName='" + databaseName + '\'' + ", tableName='" + tableName + '\''
         + ", hiveUser='" + hiveUser + '\'' + ", hivePass='" + hivePass + '\'' + ", jdbcUrl='" + jdbcUrl + '\''
         + ", basePath='" + basePath + '\'' + ", partitionFields=" + partitionFields + ", partitionValueExtractorClass='"
         + partitionValueExtractorClass + '\'' + ", assumeDatePartitioning=" + assumeDatePartitioning

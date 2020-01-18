@@ -18,12 +18,6 @@
 
 package org.apache.hudi.func;
 
-import static org.apache.hudi.func.CopyOnWriteLazyInsertIterable.getTransformFunction;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import java.util.List;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.hudi.HoodieClientTestHarness;
 import org.apache.hudi.common.HoodieTestDataGenerator;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -32,15 +26,24 @@ import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.queue.BoundedInMemoryQueueConsumer;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.func.CopyOnWriteLazyInsertIterable.HoodieInsertValueGenResult;
+
+import org.apache.avro.generic.IndexedRecord;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.List;
+
 import scala.Tuple2;
+
+import static org.apache.hudi.func.CopyOnWriteLazyInsertIterable.getTransformFunction;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TestBoundedInMemoryExecutor extends HoodieClientTestHarness {
 
-  private final String commitTime = HoodieActiveTimeline.createNewCommitTime();
+  private final String commitTime = HoodieActiveTimeline.createNewInstantTime();
 
   @Before
   public void setUp() throws Exception {
@@ -53,7 +56,7 @@ public class TestBoundedInMemoryExecutor extends HoodieClientTestHarness {
   }
 
   @Test
-  public void testExecutor() throws Exception {
+  public void testExecutor() {
 
     final List<HoodieRecord> hoodieRecords = dataGen.generateInserts(commitTime, 100);
 
@@ -81,7 +84,7 @@ public class TestBoundedInMemoryExecutor extends HoodieClientTestHarness {
     SparkBoundedInMemoryExecutor<HoodieRecord, Tuple2<HoodieRecord, Option<IndexedRecord>>, Integer> executor = null;
     try {
       executor = new SparkBoundedInMemoryExecutor(hoodieWriteConfig, hoodieRecords.iterator(), consumer,
-          getTransformFunction(HoodieTestDataGenerator.avroSchema));
+          getTransformFunction(HoodieTestDataGenerator.AVRO_SCHEMA));
       int result = executor.execute();
       // It should buffer and write 100 records
       Assert.assertEquals(result, 100);

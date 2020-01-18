@@ -18,15 +18,14 @@
 
 package org.apache.hudi.hadoop.realtime;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.stream.Collectors;
+import org.apache.hudi.common.model.HoodieAvroPayload;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.util.HoodieAvroUtils;
+import org.apache.hudi.common.util.LogReaderUtils;
+import org.apache.hudi.common.util.collection.Pair;
+import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.exception.HoodieIOException;
+
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.generic.GenericArray;
@@ -46,18 +45,21 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hudi.common.model.HoodieAvroPayload;
-import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.util.HoodieAvroUtils;
-import org.apache.hudi.common.util.LogReaderUtils;
-import org.apache.hudi.common.util.collection.Pair;
-import org.apache.hudi.exception.HoodieException;
-import org.apache.hudi.exception.HoodieIOException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroSchemaConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.schema.MessageType;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * Record Reader implementation to merge fresh avro data with base parquet data, to support real time queries.
@@ -128,7 +130,7 @@ public abstract class AbstractRealtimeRecordReader {
   }
 
   /**
-   * Prints a JSON representation of the ArrayWritable for easier debuggability
+   * Prints a JSON representation of the ArrayWritable for easier debuggability.
    */
   protected static String arrayWritableToString(ArrayWritable writable) {
     if (writable == null) {
@@ -142,11 +144,11 @@ public abstract class AbstractRealtimeRecordReader {
       if (w instanceof ArrayWritable) {
         builder.append(arrayWritableToString((ArrayWritable) w)).append(",");
       } else {
-        builder.append("\"value" + i + "\":" + "\"" + w + "\"").append(",");
+        builder.append("\"value" + i + "\":\"" + w + "\"").append(",");
         if (w == null) {
-          builder.append("\"type" + i + "\":" + "\"unknown\"").append(",");
+          builder.append("\"type" + i + "\":\"unknown\"").append(",");
         } else {
-          builder.append("\"type" + i + "\":" + "\"" + w.getClass().getSimpleName() + "\"").append(",");
+          builder.append("\"type" + i + "\":\"" + w.getClass().getSimpleName() + "\"").append(",");
         }
       }
       i++;
@@ -195,7 +197,7 @@ public abstract class AbstractRealtimeRecordReader {
   }
 
   /**
-   * Generate a reader schema off the provided writeSchema, to just project out the provided columns
+   * Generate a reader schema off the provided writeSchema, to just project out the provided columns.
    */
   public static Schema generateProjectionSchema(Schema writeSchema, Map<String, Field> schemaFieldsMap,
       List<String> fieldNames) {
@@ -232,7 +234,7 @@ public abstract class AbstractRealtimeRecordReader {
   }
 
   /**
-   * Convert the projected read from delta record into an array writable
+   * Convert the projected read from delta record into an array writable.
    */
   public static Writable avroToArrayWritable(Object value, Schema schema) {
 
@@ -334,7 +336,7 @@ public abstract class AbstractRealtimeRecordReader {
    */
   private void init() throws IOException {
     Schema schemaFromLogFile =
-        LogReaderUtils.readLatestSchemaFromLogFiles(split.getBasePath(), split.getDeltaFilePaths(), jobConf);
+        LogReaderUtils.readLatestSchemaFromLogFiles(split.getBasePath(), split.getDeltaLogPaths(), jobConf);
     if (schemaFromLogFile == null) {
       writerSchema = new AvroSchemaConverter().convert(baseFileSchema);
       LOG.debug("Writer Schema From Parquet => " + writerSchema.getFields());
@@ -358,7 +360,7 @@ public abstract class AbstractRealtimeRecordReader {
 
     readerSchema = generateProjectionSchema(writerSchema, schemaFieldsMap, projectionFields);
     LOG.info(String.format("About to read compacted logs %s for base split %s, projecting cols %s",
-        split.getDeltaFilePaths(), split.getPath(), projectionFields));
+        split.getDeltaLogPaths(), split.getPath(), projectionFields));
   }
 
   private Schema constructHiveOrderedSchema(Schema writerSchema, Map<String, Field> schemaFieldsMap) {

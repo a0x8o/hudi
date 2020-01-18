@@ -18,25 +18,6 @@
 
 package org.apache.hudi.index.hbase;
 
-import com.google.common.annotations.VisibleForTesting;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.RegionLocator;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hudi.WriteStatus;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -48,12 +29,29 @@ import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.collection.Pair;
-import org.apache.hudi.config.HoodieIndexConfig;
+import org.apache.hudi.config.HoodieHBaseIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieDependentSystemUnavailableException;
 import org.apache.hudi.exception.HoodieIndexException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
+
+import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HRegionLocation;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.BufferedMutator;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Mutation;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.RegionLocator;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -61,10 +59,18 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function2;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+
 import scala.Tuple2;
 
 /**
- * Hoodie Index implementation backed by HBase
+ * Hoodie Index implementation backed by HBase.
  */
 public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
 
@@ -79,14 +85,14 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
   private static final byte[] PARTITION_PATH_COLUMN = Bytes.toBytes("partition_path");
   private static final int SLEEP_TIME_MILLISECONDS = 100;
 
-  private static Logger logger = LogManager.getLogger(HBaseIndex.class);
+  private static final Logger LOG = LogManager.getLogger(HBaseIndex.class);
   private static Connection hbaseConnection = null;
   private HBaseIndexQPSResourceAllocator hBaseIndexQPSResourceAllocator = null;
   private float qpsFraction;
   private int maxQpsPerRegionServer;
   /**
    * multiPutBatchSize will be computed and re-set in updateLocation if
-   * {@link HoodieIndexConfig.HBASE_PUT_BATCH_SIZE_AUTO_COMPUTE_PROP} is set to true
+   * {@link HoodieHBaseIndexConfig#HBASE_PUT_BATCH_SIZE_AUTO_COMPUTE_PROP} is set to true.
    */
   private Integer multiPutBatchSize;
   private Integer numRegionServersForTable;
@@ -111,12 +117,11 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
   @VisibleForTesting
   public HBaseIndexQPSResourceAllocator createQPSResourceAllocator(HoodieWriteConfig config) {
     try {
-      logger.info("createQPSResourceAllocator :" + config.getHBaseQPSResourceAllocatorClass());
-      final HBaseIndexQPSResourceAllocator resourceAllocator = (HBaseIndexQPSResourceAllocator) ReflectionUtils
-          .loadClass(config.getHBaseQPSResourceAllocatorClass(), config);
-      return resourceAllocator;
+      LOG.info("createQPSResourceAllocator :" + config.getHBaseQPSResourceAllocatorClass());
+      return (HBaseIndexQPSResourceAllocator) ReflectionUtils
+              .loadClass(config.getHBaseQPSResourceAllocatorClass(), config);
     } catch (Exception e) {
-      logger.warn("error while instantiating HBaseIndexQPSResourceAllocator", e);
+      LOG.warn("error while instantiating HBaseIndexQPSResourceAllocator", e);
     }
     return new DefaultHBaseQPSResourceAllocator(config);
   }
@@ -146,24 +151,23 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
   }
 
   /**
-   * Since we are sharing the HbaseConnection across tasks in a JVM, make sure the HbaseConnectio is closed when JVM
-   * exits
+   * Since we are sharing the HBaseConnection across tasks in a JVM, make sure the HBaseConnection is closed when JVM
+   * exits.
    */
   private void addShutDownHook() {
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      public void run() {
-        try {
-          hbaseConnection.close();
-        } catch (Exception e) {
-          // fail silently for any sort of exception
-        }
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      try {
+        hbaseConnection.close();
+      } catch (Exception e) {
+        // fail silently for any sort of exception
       }
-    });
+    }));
   }
 
   /**
    * Ensure that any resources used for indexing are released here.
    */
+  @Override
   public void close() {
     this.hBaseIndexQPSResourceAllocator.releaseQPSResources();
   }
@@ -192,7 +196,7 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
     return (Function2<Integer, Iterator<HoodieRecord<T>>, Iterator<HoodieRecord<T>>>) (partitionNum,
         hoodieRecordIterator) -> {
 
-      Integer multiGetBatchSize = config.getHbaseIndexGetBatchSize();
+      int multiGetBatchSize = config.getHbaseIndexGetBatchSize();
 
       // Grab the global HBase connection
       synchronized (HBaseIndex.class) {
@@ -282,13 +286,10 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
           hbaseConnection = getHBaseConnection();
         }
       }
-      HTable hTable = null;
-      try {
-        hTable = (HTable) hbaseConnection.getTable(TableName.valueOf(tableName));
+      try (BufferedMutator mutator = hbaseConnection.getBufferedMutator(TableName.valueOf(tableName))) {
         while (statusIterator.hasNext()) {
           WriteStatus writeStatus = statusIterator.next();
-          List<Put> puts = new ArrayList<>();
-          List<Delete> deletes = new ArrayList<>();
+          List<Mutation> mutations = new ArrayList<>();
           try {
             for (HoodieRecord rec : writeStatus.getWrittenRecords()) {
               if (!writeStatus.isErrored(rec.getKey())) {
@@ -302,55 +303,44 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
                   put.addColumn(SYSTEM_COLUMN_FAMILY, COMMIT_TS_COLUMN, Bytes.toBytes(loc.get().getInstantTime()));
                   put.addColumn(SYSTEM_COLUMN_FAMILY, FILE_NAME_COLUMN, Bytes.toBytes(loc.get().getFileId()));
                   put.addColumn(SYSTEM_COLUMN_FAMILY, PARTITION_PATH_COLUMN, Bytes.toBytes(rec.getPartitionPath()));
-                  puts.add(put);
+                  mutations.add(put);
                 } else {
                   // Delete existing index for a deleted record
                   Delete delete = new Delete(Bytes.toBytes(rec.getRecordKey()));
-                  deletes.add(delete);
+                  mutations.add(delete);
                 }
               }
-              if (puts.size() + deletes.size() < multiPutBatchSize) {
+              if (mutations.size() < multiPutBatchSize) {
                 continue;
               }
-              doPutsAndDeletes(hTable, puts, deletes);
+              doMutations(mutator, mutations);
             }
             // process remaining puts and deletes, if any
-            doPutsAndDeletes(hTable, puts, deletes);
+            doMutations(mutator, mutations);
           } catch (Exception e) {
             Exception we = new Exception("Error updating index for " + writeStatus, e);
-            logger.error(we);
+            LOG.error(we);
             writeStatus.setGlobalError(we);
           }
           writeStatusList.add(writeStatus);
         }
       } catch (IOException e) {
         throw new HoodieIndexException("Failed to Update Index locations because of exception with HBase Client", e);
-      } finally {
-        if (hTable != null) {
-          try {
-            hTable.close();
-          } catch (IOException e) {
-            // Ignore
-          }
-        }
       }
       return writeStatusList.iterator();
     };
   }
 
   /**
-   * Helper method to facilitate performing puts and deletes in Hbase
+   * Helper method to facilitate performing mutations (including puts and deletes) in Hbase.
    */
-  private void doPutsAndDeletes(HTable hTable, List<Put> puts, List<Delete> deletes) throws IOException {
-    if (puts.size() > 0) {
-      hTable.put(puts);
+  private void doMutations(BufferedMutator mutator, List<Mutation> mutations) throws IOException {
+    if (mutations.isEmpty()) {
+      return;
     }
-    if (deletes.size() > 0) {
-      hTable.delete(deletes);
-    }
-    hTable.flushCommits();
-    puts.clear();
-    deletes.clear();
+    mutator.mutate(mutations);
+    mutator.flush();
+    mutations.clear();
     sleepForTime(SLEEP_TIME_MILLISECONDS);
   }
 
@@ -358,7 +348,7 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
     try {
       Thread.sleep(sleepTimeMs);
     } catch (InterruptedException e) {
-      logger.error("Sleep interrupted during throttling", e);
+      LOG.error("Sleep interrupted during throttling", e);
       throw new RuntimeException(e);
     }
   }
@@ -368,7 +358,7 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
       HoodieTable<T> hoodieTable) {
     final HBaseIndexQPSResourceAllocator hBaseIndexQPSResourceAllocator = createQPSResourceAllocator(this.config);
     setPutBatchSize(writeStatusRDD, hBaseIndexQPSResourceAllocator, jsc);
-    logger.info("multiPutBatchSize: before hbase puts" + multiPutBatchSize);
+    LOG.info("multiPutBatchSize: before hbase puts" + multiPutBatchSize);
     JavaRDD<WriteStatus> writeStatusJavaRDD = writeStatusRDD.mapPartitionsWithIndex(updateLocationFunction(), true);
     // caching the index updated status RDD
     writeStatusJavaRDD = writeStatusJavaRDD.persist(config.getWriteStatusStorageLevel());
@@ -396,15 +386,15 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
       this.numRegionServersForTable = getNumRegionServersAliveForTable();
       final float desiredQPSFraction =
           hBaseIndexQPSResourceAllocator.calculateQPSFractionForPutsTime(numPuts, this.numRegionServersForTable);
-      logger.info("Desired QPSFraction :" + desiredQPSFraction);
-      logger.info("Number HBase puts :" + numPuts);
-      logger.info("Hbase Puts Parallelism :" + hbasePutsParallelism);
+      LOG.info("Desired QPSFraction :" + desiredQPSFraction);
+      LOG.info("Number HBase puts :" + numPuts);
+      LOG.info("Hbase Puts Parallelism :" + hbasePutsParallelism);
       final float availableQpsFraction =
           hBaseIndexQPSResourceAllocator.acquireQPSResources(desiredQPSFraction, numPuts);
-      logger.info("Allocated QPS Fraction :" + availableQpsFraction);
+      LOG.info("Allocated QPS Fraction :" + availableQpsFraction);
       multiPutBatchSize = putBatchSizeCalculator.getBatchSize(numRegionServersForTable, maxQpsPerRegionServer,
           hbasePutsParallelism, maxExecutors, SLEEP_TIME_MILLISECONDS, availableQpsFraction);
-      logger.info("multiPutBatchSize :" + multiPutBatchSize);
+      LOG.info("multiPutBatchSize :" + multiPutBatchSize);
     }
   }
 
@@ -418,7 +408,7 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
   public static class HbasePutBatchSizeCalculator implements Serializable {
 
     private static final int MILLI_SECONDS_IN_A_SECOND = 1000;
-    private static Logger logger = LogManager.getLogger(HbasePutBatchSizeCalculator.class);
+    private static final Logger LOG = LogManager.getLogger(HbasePutBatchSizeCalculator.class);
 
     /**
      * Calculate putBatch size so that sum of requests across multiple jobs in a second does not exceed
@@ -460,15 +450,15 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
       int maxParallelPuts = Math.max(1, Math.min(numTasks, maxExecutors));
       int maxReqsSentPerTaskPerSec = MILLI_SECONDS_IN_A_SECOND / sleepTimeMs;
       int multiPutBatchSize = Math.max(1, maxReqPerSec / (maxParallelPuts * maxReqsSentPerTaskPerSec));
-      logger.info("HbaseIndexThrottling: qpsFraction :" + qpsFraction);
-      logger.info("HbaseIndexThrottling: numRSAlive :" + numRSAlive);
-      logger.info("HbaseIndexThrottling: maxReqPerSec :" + maxReqPerSec);
-      logger.info("HbaseIndexThrottling: numTasks :" + numTasks);
-      logger.info("HbaseIndexThrottling: maxExecutors :" + maxExecutors);
-      logger.info("HbaseIndexThrottling: maxParallelPuts :" + maxParallelPuts);
-      logger.info("HbaseIndexThrottling: maxReqsSentPerTaskPerSec :" + maxReqsSentPerTaskPerSec);
-      logger.info("HbaseIndexThrottling: numRegionServersForTable :" + numRegionServersForTable);
-      logger.info("HbaseIndexThrottling: multiPutBatchSize :" + multiPutBatchSize);
+      LOG.info("HbaseIndexThrottling: qpsFraction :" + qpsFraction);
+      LOG.info("HbaseIndexThrottling: numRSAlive :" + numRSAlive);
+      LOG.info("HbaseIndexThrottling: maxReqPerSec :" + maxReqPerSec);
+      LOG.info("HbaseIndexThrottling: numTasks :" + numTasks);
+      LOG.info("HbaseIndexThrottling: maxExecutors :" + maxExecutors);
+      LOG.info("HbaseIndexThrottling: maxParallelPuts :" + maxParallelPuts);
+      LOG.info("HbaseIndexThrottling: maxReqsSentPerTaskPerSec :" + maxReqsSentPerTaskPerSec);
+      LOG.info("HbaseIndexThrottling: numRegionServersForTable :" + numRegionServersForTable);
+      LOG.info("HbaseIndexThrottling: multiPutBatchSize :" + multiPutBatchSize);
       return multiPutBatchSize;
     }
   }
@@ -480,10 +470,10 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
       try (Connection conn = getHBaseConnection()) {
         RegionLocator regionLocator = conn.getRegionLocator(TableName.valueOf(tableName));
         numRegionServersForTable = Math
-            .toIntExact(regionLocator.getAllRegionLocations().stream().map(e -> e.getServerName()).distinct().count());
+            .toIntExact(regionLocator.getAllRegionLocations().stream().map(HRegionLocation::getServerName).distinct().count());
         return numRegionServersForTable;
       } catch (IOException e) {
-        logger.error(e);
+        LOG.error(e);
         throw new RuntimeException(e);
       }
     }
@@ -497,7 +487,7 @@ public class HBaseIndex<T extends HoodieRecordPayload> extends HoodieIndex<T> {
   }
 
   /**
-   * Only looks up by recordKey
+   * Only looks up by recordKey.
    */
   @Override
   public boolean isGlobal() {

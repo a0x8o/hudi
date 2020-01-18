@@ -18,6 +18,20 @@
 
 package org.apache.hudi.hadoop;
 
+import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.model.HoodieTestUtils;
+import org.apache.hudi.common.util.FSUtils;
+import org.apache.hudi.common.util.HoodieAvroUtils;
+import org.apache.hudi.common.util.SchemaTestUtil;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.junit.rules.TemporaryFolder;
+
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
@@ -26,25 +40,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.model.HoodieTestUtils;
-import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
-import org.apache.hudi.common.util.FSUtils;
-import org.apache.hudi.common.util.HoodieAvroUtils;
-import org.apache.hudi.common.util.SchemaTestUtil;
-import org.apache.parquet.avro.AvroParquetWriter;
-import org.junit.rules.TemporaryFolder;
 
 public class InputFormatTestUtil {
 
   private static String TEST_WRITE_TOKEN = "1-0-1";
 
-  public static File prepareDataset(TemporaryFolder basePath, int numberOfFiles, String commitNumber)
+  public static File prepareTable(TemporaryFolder basePath, int numberOfFiles, String commitNumber)
       throws IOException {
     basePath.create();
     HoodieTestUtils.init(HoodieTestUtils.getDefaultHadoopConf(), basePath.getRoot().toString());
@@ -104,7 +105,7 @@ public class InputFormatTestUtil {
     return new Schema.Parser().parse(InputFormatTestUtil.class.getResourceAsStream(location));
   }
 
-  public static File prepareParquetDataset(TemporaryFolder basePath, Schema schema, int numberOfFiles,
+  public static File prepareParquetTable(TemporaryFolder basePath, Schema schema, int numberOfFiles,
       int numberOfRecords, String commitNumber) throws IOException {
     basePath.create();
     HoodieTestUtils.init(HoodieTestUtils.getDefaultHadoopConf(), basePath.getRoot().toString());
@@ -113,8 +114,7 @@ public class InputFormatTestUtil {
     return partitionPath;
   }
 
-
-  public static File prepareSimpleParquetDataset(TemporaryFolder basePath, Schema schema, int numberOfFiles,
+  public static File prepareSimpleParquetTable(TemporaryFolder basePath, Schema schema, int numberOfFiles,
       int numberOfRecords, String commitNumber) throws Exception {
     basePath.create();
     HoodieTestUtils.init(HoodieTestUtils.getDefaultHadoopConf(), basePath.getRoot().toString());
@@ -123,7 +123,7 @@ public class InputFormatTestUtil {
     return partitionPath;
   }
 
-  public static File prepareNonPartitionedParquetDataset(TemporaryFolder baseDir, Schema schema, int numberOfFiles,
+  public static File prepareNonPartitionedParquetTable(TemporaryFolder baseDir, Schema schema, int numberOfFiles,
       int numberOfRecords, String commitNumber) throws IOException {
     baseDir.create();
     HoodieTestUtils.init(HoodieTestUtils.getDefaultHadoopConf(), baseDir.getRoot().toString());
@@ -158,7 +158,6 @@ public class InputFormatTestUtil {
       parquetWriter = new AvroParquetWriter(new Path(dataFile.getAbsolutePath()), schema);
       try {
         List<IndexedRecord> records = SchemaTestUtil.generateTestRecords(0, numberOfRecords);
-        String commitTime = HoodieActiveTimeline.createNewCommitTime();
         Schema hoodieFieldsSchema = HoodieAvroUtils.addMetadataFields(schema);
         for (IndexedRecord record : records) {
           GenericRecord p = HoodieAvroUtils.rewriteRecord((GenericRecord) record, hoodieFieldsSchema);

@@ -18,16 +18,6 @@
 
 package org.apache.hudi.cli.commands;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.stream.Collectors;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.IndexedRecord;
-import org.apache.avro.specific.SpecificData;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.model.HoodieArchivedMetaEntry;
 import org.apache.hudi.avro.model.HoodieCommitMetadata;
 import org.apache.hudi.cli.HoodieCLI;
@@ -39,19 +29,28 @@ import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.log.HoodieLogFormat.Reader;
 import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
 import org.apache.hudi.common.util.FSUtils;
+
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.avro.specific.SpecificData;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.Path;
 import org.springframework.shell.core.CommandMarker;
-import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * CLI command to display archived commits and stats if available.
+ */
 @Component
 public class ArchivedCommitsCommand implements CommandMarker {
-
-  @CliAvailabilityIndicator({"show archived commits"})
-  public boolean isShowArchivedCommitAvailable() {
-    return HoodieCLI.tableMetadata != null;
-  }
 
   @CliCommand(value = "show archived commit stats", help = "Read commits from archived files and show details")
   public String showArchivedCommits(
@@ -63,7 +62,7 @@ public class ArchivedCommitsCommand implements CommandMarker {
           unspecifiedDefaultValue = "false") final boolean headerOnly)
       throws IOException {
     System.out.println("===============> Showing only " + limit + " archived commits <===============");
-    String basePath = HoodieCLI.tableMetadata.getBasePath();
+    String basePath = HoodieCLI.getTableMetaClient().getBasePath();
     Path archivePath = new Path(basePath + "/.hoodie/.commits_.archive*");
     if (folder != null && !folder.isEmpty()) {
       archivePath = new Path(basePath + "/.hoodie/" + folder);
@@ -90,29 +89,27 @@ public class ArchivedCommitsCommand implements CommandMarker {
                 .deepCopy(HoodieCommitMetadata.SCHEMA$, r.get("hoodieCommitMetadata"));
             final String instantTime = r.get("commitTime").toString();
             final String action = r.get("actionType").toString();
-            return metadata.getPartitionToWriteStats().values().stream().flatMap(hoodieWriteStats -> {
-              return hoodieWriteStats.stream().map(hoodieWriteStat -> {
-                List<Comparable> row = new ArrayList<>();
-                row.add(action);
-                row.add(instantTime);
-                row.add(hoodieWriteStat.getPartitionPath());
-                row.add(hoodieWriteStat.getFileId());
-                row.add(hoodieWriteStat.getPrevCommit());
-                row.add(hoodieWriteStat.getNumWrites());
-                row.add(hoodieWriteStat.getNumInserts());
-                row.add(hoodieWriteStat.getNumDeletes());
-                row.add(hoodieWriteStat.getNumUpdateWrites());
-                row.add(hoodieWriteStat.getTotalLogFiles());
-                row.add(hoodieWriteStat.getTotalLogBlocks());
-                row.add(hoodieWriteStat.getTotalCorruptLogBlock());
-                row.add(hoodieWriteStat.getTotalRollbackBlocks());
-                row.add(hoodieWriteStat.getTotalLogRecords());
-                row.add(hoodieWriteStat.getTotalUpdatedRecordsCompacted());
-                row.add(hoodieWriteStat.getTotalWriteBytes());
-                row.add(hoodieWriteStat.getTotalWriteErrors());
-                return row;
-              });
-            }).map(rowList -> rowList.toArray(new Comparable[0]));
+            return metadata.getPartitionToWriteStats().values().stream().flatMap(hoodieWriteStats -> hoodieWriteStats.stream().map(hoodieWriteStat -> {
+              List<Comparable> row = new ArrayList<>();
+              row.add(action);
+              row.add(instantTime);
+              row.add(hoodieWriteStat.getPartitionPath());
+              row.add(hoodieWriteStat.getFileId());
+              row.add(hoodieWriteStat.getPrevCommit());
+              row.add(hoodieWriteStat.getNumWrites());
+              row.add(hoodieWriteStat.getNumInserts());
+              row.add(hoodieWriteStat.getNumDeletes());
+              row.add(hoodieWriteStat.getNumUpdateWrites());
+              row.add(hoodieWriteStat.getTotalLogFiles());
+              row.add(hoodieWriteStat.getTotalLogBlocks());
+              row.add(hoodieWriteStat.getTotalCorruptLogBlock());
+              row.add(hoodieWriteStat.getTotalRollbackBlocks());
+              row.add(hoodieWriteStat.getTotalLogRecords());
+              row.add(hoodieWriteStat.getTotalUpdatedRecordsCompacted());
+              row.add(hoodieWriteStat.getTotalWriteBytes());
+              row.add(hoodieWriteStat.getTotalWriteErrors());
+              return row;
+            })).map(rowList -> rowList.toArray(new Comparable[0]));
           }).collect(Collectors.toList());
       allStats.addAll(readCommits);
       reader.close();
@@ -141,7 +138,7 @@ public class ArchivedCommitsCommand implements CommandMarker {
       throws IOException {
 
     System.out.println("===============> Showing only " + limit + " archived commits <===============");
-    String basePath = HoodieCLI.tableMetadata.getBasePath();
+    String basePath = HoodieCLI.getTableMetaClient().getBasePath();
     FileStatus[] fsStatuses =
         FSUtils.getFs(basePath, HoodieCLI.conf).globStatus(new Path(basePath + "/.hoodie/.commits_.archive*"));
     List<Comparable[]> allCommits = new ArrayList<>();
@@ -184,14 +181,7 @@ public class ArchivedCommitsCommand implements CommandMarker {
           }
           break;
         }
-        case HoodieTimeline.COMMIT_ACTION: {
-          commitDetails.add(record.get("commitTime"));
-          commitDetails.add(record.get("actionType").toString());
-          if (!skipMetadata) {
-            commitDetails.add(record.get("hoodieCommitMetadata").toString());
-          }
-          break;
-        }
+        case HoodieTimeline.COMMIT_ACTION:
         case HoodieTimeline.DELTA_COMMIT_ACTION: {
           commitDetails.add(record.get("commitTime"));
           commitDetails.add(record.get("actionType").toString());

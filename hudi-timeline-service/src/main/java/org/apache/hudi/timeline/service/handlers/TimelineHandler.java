@@ -18,17 +18,19 @@
 
 package org.apache.hudi.timeline.service.handlers;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hudi.common.table.timeline.dto.InstantDTO;
 import org.apache.hudi.common.table.timeline.dto.TimelineDTO;
 import org.apache.hudi.common.table.view.FileSystemViewManager;
 
+import org.apache.hadoop.conf.Configuration;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
- * REST Handler servicing timeline requests
+ * REST Handler servicing timeline requests.
  */
 public class TimelineHandler extends Handler {
 
@@ -38,7 +40,7 @@ public class TimelineHandler extends Handler {
 
   public List<InstantDTO> getLastInstant(String basePath) {
     return viewManager.getFileSystemView(basePath).getLastInstant().map(InstantDTO::fromInstant)
-        .map(dto -> Arrays.asList(dto)).orElse(new ArrayList<>());
+        .map(Arrays::asList).orElse(new ArrayList<>());
   }
 
   public TimelineDTO getTimeline(String basePath) {

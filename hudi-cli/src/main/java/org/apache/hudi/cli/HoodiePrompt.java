@@ -23,6 +23,9 @@ import org.springframework.core.annotation.Order;
 import org.springframework.shell.plugin.support.DefaultPromptProvider;
 import org.springframework.stereotype.Component;
 
+/**
+ * This class deals with displaying prompt on CLI based on the state.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class HoodiePrompt extends DefaultPromptProvider {
@@ -34,7 +37,7 @@ public class HoodiePrompt extends DefaultPromptProvider {
       switch (HoodieCLI.state) {
         case INIT:
           return "hudi->";
-        case DATASET:
+        case TABLE:
           return "hudi:" + tableName + "->";
         case SYNC:
           return "hudi:" + tableName + " <==> " + HoodieCLI.syncTableMetadata.getTableConfig().getTableName() + "->";

@@ -18,14 +18,25 @@
 
 package org.apache.hudi.common.util;
 
-import static org.apache.hudi.common.model.HoodieTestUtils.DEFAULT_PARTITION_PATHS;
-import static org.apache.hudi.common.util.CompactionTestUtils.createCompactionPlan;
-import static org.apache.hudi.common.util.CompactionTestUtils.scheduleCompaction;
-import static org.apache.hudi.common.util.CompactionTestUtils.setupAndValidateCompactionOperations;
-import static org.apache.hudi.common.util.CompactionUtils.COMPACTION_METADATA_VERSION_1;
-import static org.apache.hudi.common.util.CompactionUtils.LATEST_COMPACTION_METADATA_VERSION;
+import org.apache.hudi.avro.model.HoodieCompactionOperation;
+import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.common.HoodieCommonTestHarness;
+import org.apache.hudi.common.model.FileSlice;
+import org.apache.hudi.common.model.HoodieBaseFile;
+import org.apache.hudi.common.model.HoodieFileGroupId;
+import org.apache.hudi.common.model.HoodieLogFile;
+import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.util.CompactionTestUtils.TestHoodieBaseFile;
+import org.apache.hudi.common.util.collection.Pair;
+import org.apache.hudi.common.versioning.compaction.CompactionPlanMigrator;
 
 import com.google.common.collect.ImmutableMap;
+import org.apache.hadoop.fs.Path;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -33,30 +44,24 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.hadoop.fs.Path;
-import org.apache.hudi.avro.model.HoodieCompactionOperation;
-import org.apache.hudi.avro.model.HoodieCompactionPlan;
-import org.apache.hudi.common.HoodieCommonTestHarness;
-import org.apache.hudi.common.model.FileSlice;
-import org.apache.hudi.common.model.HoodieDataFile;
-import org.apache.hudi.common.model.HoodieFileGroupId;
-import org.apache.hudi.common.model.HoodieLogFile;
-import org.apache.hudi.common.model.HoodieTableType;
-import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.util.CompactionTestUtils.TestHoodieDataFile;
-import org.apache.hudi.common.util.collection.Pair;
-import org.apache.hudi.common.versioning.compaction.CompactionPlanMigrator;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
 
+import static org.apache.hudi.common.model.HoodieTestUtils.DEFAULT_PARTITION_PATHS;
+import static org.apache.hudi.common.util.CompactionTestUtils.createCompactionPlan;
+import static org.apache.hudi.common.util.CompactionTestUtils.scheduleCompaction;
+import static org.apache.hudi.common.util.CompactionTestUtils.setupAndValidateCompactionOperations;
+import static org.apache.hudi.common.util.CompactionUtils.COMPACTION_METADATA_VERSION_1;
+import static org.apache.hudi.common.util.CompactionUtils.LATEST_COMPACTION_METADATA_VERSION;
+
+/**
+ * The utility class for testing compaction.
+ */
 public class TestCompactionUtils extends HoodieCommonTestHarness {
 
   private static String TEST_WRITE_TOKEN = "1-0-1";
 
-  private static final Map<String, Double> metrics =
+  private static final Map<String, Double> METRICS =
       new ImmutableMap.Builder<String, Double>().put("key1", 1.0).put("key2", 3.0).build();
-  private Function<Pair<String, FileSlice>, Map<String, Double>> metricsCaptureFn = (partitionFileSlice) -> metrics;
+  private Function<Pair<String, FileSlice>, Map<String, Double>> metricsCaptureFn = (partitionFileSlice) -> METRICS;
 
   @Before
   public void init() throws IOException {
@@ -92,7 +97,7 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
 
     // File Slice with data-file but no log files
     FileSlice noLogFileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "noLog1");
-    noLogFileSlice.setDataFile(new TestHoodieDataFile("/tmp/noLog_1_000.parquet"));
+    noLogFileSlice.setBaseFile(new TestHoodieBaseFile("/tmp/noLog_1_000.parquet"));
     op = CompactionUtils.buildFromFileSlice(DEFAULT_PARTITION_PATHS[0], noLogFileSlice, Option.of(metricsCaptureFn));
     testFileSliceCompactionOpEquality(noLogFileSlice, op, DEFAULT_PARTITION_PATHS[0],
         LATEST_COMPACTION_METADATA_VERSION);
@@ -108,7 +113,7 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
 
     // File Slice with data-file and log files present
     FileSlice fileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "noData1");
-    fileSlice.setDataFile(new TestHoodieDataFile("/tmp/noLog_1_000.parquet"));
+    fileSlice.setBaseFile(new TestHoodieBaseFile("/tmp/noLog_1_000.parquet"));
     fileSlice.addLogFile(
         new HoodieLogFile(new Path(FSUtils.makeLogFileName("noData1", ".log", "000", 1, TEST_WRITE_TOKEN))));
     fileSlice.addLogFile(
@@ -118,19 +123,19 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
   }
 
   /**
-   * Generate input for compaction plan tests
+   * Generate input for compaction plan tests.
    */
   private Pair<List<Pair<String, FileSlice>>, HoodieCompactionPlan> buildCompactionPlan() {
     Path fullPartitionPath = new Path(new Path(metaClient.getBasePath()), DEFAULT_PARTITION_PATHS[0]);
     FileSlice emptyFileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "empty1");
     FileSlice fileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "noData1");
-    fileSlice.setDataFile(new TestHoodieDataFile(fullPartitionPath.toString() + "/data1_1_000.parquet"));
+    fileSlice.setBaseFile(new TestHoodieBaseFile(fullPartitionPath.toString() + "/data1_1_000.parquet"));
     fileSlice.addLogFile(new HoodieLogFile(
         new Path(fullPartitionPath, new Path(FSUtils.makeLogFileName("noData1", ".log", "000", 1, TEST_WRITE_TOKEN)))));
     fileSlice.addLogFile(new HoodieLogFile(
         new Path(fullPartitionPath, new Path(FSUtils.makeLogFileName("noData1", ".log", "000", 2, TEST_WRITE_TOKEN)))));
     FileSlice noLogFileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "noLog1");
-    noLogFileSlice.setDataFile(new TestHoodieDataFile(fullPartitionPath.toString() + "/noLog_1_000.parquet"));
+    noLogFileSlice.setBaseFile(new TestHoodieBaseFile(fullPartitionPath.toString() + "/noLog_1_000.parquet"));
     FileSlice noDataFileSlice = new FileSlice(DEFAULT_PARTITION_PATHS[0], "000", "noData1");
     noDataFileSlice.addLogFile(new HoodieLogFile(
         new Path(fullPartitionPath, new Path(FSUtils.makeLogFileName("noData1", ".log", "000", 1, TEST_WRITE_TOKEN)))));
@@ -213,7 +218,7 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
   }
 
   /**
-   * Validates if generated compaction plan matches with input file-slices
+   * Validates if generated compaction plan matches with input file-slices.
    *
    * @param input File Slices with partition-path
    * @param plan Compaction Plan
@@ -225,7 +230,7 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
   }
 
   /**
-   * Validates if generated compaction operation matches with input file slice and partition path
+   * Validates if generated compaction operation matches with input file slice and partition path.
    *
    * @param slice File Slice
    * @param op HoodieCompactionOperation
@@ -236,8 +241,8 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
     Assert.assertEquals("Partition path is correct", expPartitionPath, op.getPartitionPath());
     Assert.assertEquals("Same base-instant", slice.getBaseInstantTime(), op.getBaseInstantTime());
     Assert.assertEquals("Same file-id", slice.getFileId(), op.getFileId());
-    if (slice.getDataFile().isPresent()) {
-      HoodieDataFile df = slice.getDataFile().get();
+    if (slice.getBaseFile().isPresent()) {
+      HoodieBaseFile df = slice.getBaseFile().get();
       Assert.assertEquals("Same data-file", version == COMPACTION_METADATA_VERSION_1 ? df.getPath() : df.getFileName(),
           op.getDataFilePath());
     }
@@ -247,7 +252,7 @@ public class TestCompactionUtils extends HoodieCommonTestHarness {
           version == COMPACTION_METADATA_VERSION_1 ? paths.get(idx) : new Path(paths.get(idx)).getName(),
           op.getDeltaFilePaths().get(idx));
     });
-    Assert.assertEquals("Metrics set", metrics, op.getMetrics());
+    Assert.assertEquals("Metrics set", METRICS, op.getMetrics());
   }
 
   @Override
