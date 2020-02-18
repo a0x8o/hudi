@@ -101,7 +101,7 @@ public class HoodieWriteClient<T extends HoodieRecordPayload> extends AbstractHo
 
 
   /**
-   * Create a wirte client, without cleaning up failed/inflight commits.
+   * Create a write client, without cleaning up failed/inflight commits.
    *
    * @param jsc Java Spark Context
    * @param clientConfig instance of HoodieWriteConfig
@@ -111,7 +111,7 @@ public class HoodieWriteClient<T extends HoodieRecordPayload> extends AbstractHo
   }
 
   /**
-   * Create a wirte client, with new hudi index.
+   * Create a write client, with new hudi index.
    *
    * @param jsc Java Spark Context
    * @param clientConfig instance of HoodieWriteConfig
@@ -127,7 +127,7 @@ public class HoodieWriteClient<T extends HoodieRecordPayload> extends AbstractHo
   }
 
   /**
-   *  Create a wirte client, allows to specify all parameters.
+   *  Create a write client, allows to specify all parameters.
    *
    * @param jsc Java Spark Context
    * @param clientConfig instance of HoodieWriteConfig
@@ -869,12 +869,11 @@ public class HoodieWriteClient<T extends HoodieRecordPayload> extends AbstractHo
     LOG.info("Generate a new instant time " + instantTime);
     HoodieTableMetaClient metaClient = createMetaClient(true);
     // if there are pending compactions, their instantTime must not be greater than that of this instant time
-    metaClient.getActiveTimeline().filterPendingCompactionTimeline().lastInstant().ifPresent(latestPending -> {
-      Preconditions.checkArgument(
-          HoodieTimeline.compareTimestamps(latestPending.getTimestamp(), instantTime, HoodieTimeline.LESSER),
-          "Latest pending compaction instant time must be earlier than this instant time. Latest Compaction :"
-              + latestPending + ",  Ingesting at " + instantTime);
-    });
+    metaClient.getActiveTimeline().filterPendingCompactionTimeline().lastInstant().ifPresent(latestPending ->
+        Preconditions.checkArgument(
+            HoodieTimeline.compareTimestamps(latestPending.getTimestamp(), instantTime, HoodieTimeline.LESSER),
+        "Latest pending compaction instant time must be earlier than this instant time. Latest Compaction :"
+            + latestPending + ",  Ingesting at " + instantTime));
     HoodieTable<T> table = HoodieTable.getHoodieTable(metaClient, config, jsc);
     HoodieActiveTimeline activeTimeline = table.getActiveTimeline();
     String commitActionType = table.getMetaClient().getCommitActionType();
@@ -1055,7 +1054,7 @@ public class HoodieWriteClient<T extends HoodieRecordPayload> extends AbstractHo
   /**
    * Perform compaction operations as specified in the compaction commit file.
    *
-   * @param compactionInstant Compacton Instant time
+   * @param compactionInstant Compaction Instant time
    * @param activeTimeline Active Timeline
    * @param autoCommit Commit after compaction
    * @return RDD of Write Status

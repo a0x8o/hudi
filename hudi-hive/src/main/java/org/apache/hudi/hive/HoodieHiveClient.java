@@ -18,7 +18,6 @@
 
 package org.apache.hudi.hive;
 
-import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieLogFile;
@@ -35,12 +34,11 @@ import org.apache.hudi.exception.InvalidTableException;
 import org.apache.hudi.hive.util.SchemaUtil;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.Table;
@@ -65,14 +63,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-@SuppressWarnings("ConstantConditions")
 public class HoodieHiveClient {
 
   private static final String HOODIE_LAST_COMMIT_TIME_SYNC = "last_commit_time_sync";
@@ -190,11 +186,11 @@ public class HoodieHiveClient {
     for (int i = 0; i < syncConfig.partitionFields.size(); i++) {
       partBuilder.add("`" + syncConfig.partitionFields.get(i) + "`='" + partitionValues.get(i) + "'");
     }
-    return partBuilder.stream().collect(Collectors.joining(","));
+    return String.join(",", partBuilder);
   }
 
   private List<String> constructChangePartitions(String tableName, List<String> partitions) {
-    List<String> changePartitions = Lists.newArrayList();
+    List<String> changePartitions = new ArrayList<>();
     // Hive 2.x doesn't like db.table name for operations, hence we need to change to using the database first
     String useDatabase = "USE " + HIVE_ESCAPE_CHARACTER + syncConfig.databaseName + HIVE_ESCAPE_CHARACTER;
     changePartitions.add(useDatabase);
@@ -216,7 +212,7 @@ public class HoodieHiveClient {
    * Generate a list of PartitionEvent based on the changes required.
    */
   List<PartitionEvent> getPartitionEvents(List<Partition> tablePartitions, List<String> partitionStoragePartitions) {
-    Map<String, String> paths = Maps.newHashMap();
+    Map<String, String> paths = new HashMap<>();
     for (Partition tablePartition : tablePartitions) {
       List<String> hivePartitionValues = tablePartition.getValues();
       Collections.sort(hivePartitionValues);
@@ -225,7 +221,7 @@ public class HoodieHiveClient {
       paths.put(String.join(", ", hivePartitionValues), fullTablePartitionPath);
     }
 
-    List<PartitionEvent> events = Lists.newArrayList();
+    List<PartitionEvent> events = new ArrayList<>();
     for (String storagePartition : partitionStoragePartitions) {
       Path storagePartitionPath = FSUtils.getPartitionPath(syncConfig.basePath, storagePartition);
       String fullStoragePartitionPath = Path.getPathWithoutSchemeAndAuthority(storagePartitionPath).toUri().getPath();
@@ -288,7 +284,7 @@ public class HoodieHiveClient {
         throw new IllegalArgumentException(
             "Failed to get schema for table " + tableName + " does not exist");
       }
-      Map<String, String> schema = Maps.newHashMap();
+      Map<String, String> schema = new HashMap<>();
       ResultSet result = null;
       try {
         DatabaseMetaData databaseMetaData = connection.getMetaData();
@@ -418,7 +414,6 @@ public class HoodieHiveClient {
   /**
    * Read schema from a data file from the last compaction commit done.
    */
-  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
   private MessageType readSchemaFromLastCompaction(Option<HoodieInstant> lastCompactionCommitOpt) throws IOException {
     HoodieInstant lastCompactionCommit = lastCompactionCommitOpt.orElseThrow(() -> new HoodieHiveSyncException(
         "Could not read schema from last compaction, no compaction commits found on path " + syncConfig.basePath));
@@ -435,7 +430,6 @@ public class HoodieHiveClient {
   /**
    * Read the schema from the log file on path.
    */
-  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
   private MessageType readSchemaFromLogFile(Option<HoodieInstant> lastCompactionCommitOpt, Path path)
       throws IOException {
     MessageType messageType = SchemaUtil.readSchemaFromLogFile(fs, path);
@@ -499,12 +493,12 @@ public class HoodieHiveClient {
    *
    * @param sql SQL statement to execute
    */
-  public CommandProcessorResponse updateHiveSQLUsingHiveDriver(String sql) throws HoodieHiveSyncException {
-    List<CommandProcessorResponse> responses = updateHiveSQLs(Arrays.asList(sql));
+  public CommandProcessorResponse updateHiveSQLUsingHiveDriver(String sql) {
+    List<CommandProcessorResponse> responses = updateHiveSQLs(Collections.singletonList(sql));
     return responses.get(responses.size() - 1);
   }
 
-  private List<CommandProcessorResponse> updateHiveSQLs(List<String> sqls) throws HoodieHiveSyncException {
+  private List<CommandProcessorResponse> updateHiveSQLs(List<String> sqls) {
     SessionState ss = null;
     org.apache.hadoop.hive.ql.Driver hiveDriver = null;
     List<CommandProcessorResponse> responses = new ArrayList<>();
@@ -627,7 +621,6 @@ public class HoodieHiveClient {
     }
   }
 
-  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
   List<String> getPartitionsWrittenToSince(Option<String> lastCommitTimeSynced) {
     if (!lastCommitTimeSynced.isPresent()) {
       LOG.info("Last commit time synced is not known, listing all partitions in " + syncConfig.basePath + ",FS :" + fs);
