@@ -20,12 +20,13 @@ package org.apache.hudi.utilities;
 
 import org.apache.avro.Schema;
 import org.apache.hudi.AvroConversionUtils;
-import org.apache.hudi.HoodieWriteClient;
-import org.apache.hudi.WriteStatus;
+import org.apache.hudi.client.HoodieWriteClient;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.util.DFSPropertiesConfiguration;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.TypedProperties;
+import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
@@ -36,7 +37,6 @@ import org.apache.hudi.utilities.schema.SchemaProvider;
 import org.apache.hudi.utilities.sources.Source;
 import org.apache.hudi.utilities.transform.Transformer;
 
-import com.google.common.base.Preconditions;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -68,11 +68,12 @@ import java.sql.SQLException;
 import java.sql.DriverManager;
 import java.sql.Driver;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
-import java.util.Enumeration;
 
 /**
  * Bunch of helper methods.
@@ -136,7 +137,7 @@ public class UtilHelpers {
     TypedProperties properties = new TypedProperties();
     props.forEach(x -> {
       String[] kv = x.split("=");
-      Preconditions.checkArgument(kv.length == 2);
+      ValidationUtils.checkArgument(kv.length == 2);
       properties.setProperty(kv[0], kv[1]);
     });
     return properties;
@@ -279,14 +280,14 @@ public class UtilHelpers {
       }
     }
 
-    Preconditions.checkNotNull(driver, String.format("Did not find registered driver with class %s", driverClass));
+    Objects.requireNonNull(driver, String.format("Did not find registered driver with class %s", driverClass));
 
     Properties properties = new Properties();
     properties.putAll(options);
-    Connection connect = null;
+    Connection connect;
     String url = options.get(JDBCOptions.JDBC_URL());
     connect = driver.connect(url, properties);
-    Preconditions.checkNotNull(connect, String.format("The driver could not open a JDBC connection. Check the URL: %s", url));
+    Objects.requireNonNull(connect, String.format("The driver could not open a JDBC connection. Check the URL: %s", url));
     return connect;
   }
 

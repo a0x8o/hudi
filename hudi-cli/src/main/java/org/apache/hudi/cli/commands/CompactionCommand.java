@@ -18,8 +18,8 @@
 
 package org.apache.hudi.cli.commands;
 
-import org.apache.hudi.CompactionAdminClient.RenameOpResult;
-import org.apache.hudi.CompactionAdminClient.ValidationOpResult;
+import org.apache.hudi.client.CompactionAdminClient.RenameOpResult;
+import org.apache.hudi.client.CompactionAdminClient.ValidationOpResult;
 import org.apache.hudi.avro.model.HoodieCompactionOperation;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.cli.HoodieCLI;
@@ -42,7 +42,7 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIOException;
-import org.apache.hudi.func.OperationResult;
+import org.apache.hudi.table.compact.OperationResult;
 import org.apache.hudi.utilities.UtilHelpers;
 
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -126,8 +126,8 @@ public class CompactionCommand implements CommandMarker {
     return printCompaction(compactionPlan, sortByField, descending, limit, headerOnly);
   }
 
-  @CliCommand(value = "compactions show archived", help = "Shows compaction details for specified time window")
-  public String compactionShowArchived(
+  @CliCommand(value = "compactions showarchived", help = "Shows compaction details for specified time window")
+  public String compactionsShowArchived(
           @CliOption(key = {"includeExtraMetadata"}, help = "Include extra metadata",
                   unspecifiedDefaultValue = "false") final boolean includeExtraMetadata,
           @CliOption(key = {"startTs"},  mandatory = false, help = "start time for compactions, default: now - 10 days")
@@ -160,7 +160,7 @@ public class CompactionCommand implements CommandMarker {
     }
   }
 
-  @CliCommand(value = "compaction show archived", help = "Shows compaction details for a specific compaction instant")
+  @CliCommand(value = "compaction showarchived", help = "Shows compaction details for a specific compaction instant")
   public String compactionShowArchived(
           @CliOption(key = "instant", mandatory = true,
                   help = "instant time") final String compactionInstantTime,

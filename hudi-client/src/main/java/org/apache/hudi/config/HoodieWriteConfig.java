@@ -18,18 +18,17 @@
 
 package org.apache.hudi.config;
 
-import org.apache.hudi.HoodieWriteClient;
-import org.apache.hudi.WriteStatus;
+import org.apache.hudi.client.HoodieWriteClient;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
 import org.apache.hudi.common.model.TimelineLayoutVersion;
 import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.util.ConsistencyGuardConfig;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.index.HoodieIndex;
-import org.apache.hudi.io.compact.strategy.CompactionStrategy;
+import org.apache.hudi.table.compact.strategy.CompactionStrategy;
 import org.apache.hudi.metrics.MetricsReporterType;
 
-import com.google.common.base.Preconditions;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.spark.storage.StorageLevel;
 
@@ -40,6 +39,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 /**
@@ -95,7 +95,6 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   // maximum number of checks, for consistency of written data. Will wait upto 256 Secs
   private static final String MAX_CONSISTENCY_CHECKS_PROP = "hoodie.consistency.check.max_checks";
   private static int DEFAULT_MAX_CONSISTENCY_CHECKS = 7;
-
 
   private ConsistencyGuardConfig consistencyGuardConfig;
 
@@ -764,7 +763,7 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
 
       // Build WriteConfig at the end
       HoodieWriteConfig config = new HoodieWriteConfig(props);
-      Preconditions.checkArgument(config.getBasePath() != null);
+      Objects.requireNonNull(config.getBasePath());
       return config;
     }
   }

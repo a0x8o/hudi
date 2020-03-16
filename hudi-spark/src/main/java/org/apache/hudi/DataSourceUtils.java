@@ -18,11 +18,14 @@
 
 package org.apache.hudi;
 
-import org.apache.hudi.client.embedded.EmbeddedTimelineService;
+import org.apache.avro.LogicalTypes;
+import org.apache.avro.Schema;
+import org.apache.hudi.client.HoodieReadClient;
+import org.apache.hudi.client.HoodieWriteClient;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.TypedProperties;
 import org.apache.hudi.config.HoodieCompactionConfig;
@@ -42,6 +45,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -77,7 +81,8 @@ public class DataSourceUtils {
 
       // return, if last part of name
       if (i == parts.length - 1) {
-        return val;
+        Schema fieldSchema = valueNode.getSchema().getField(part).schema();
+        return convertValueForSpecificDataTypes(fieldSchema, val);
       } else {
         // VC: Need a test here
         if (!(val instanceof GenericRecord)) {
@@ -94,6 +99,40 @@ public class DataSourceUtils {
         fieldName + "(Part -" + parts[i] + ") field not found in record. Acceptable fields were :"
           + valueNode.getSchema().getFields().stream().map(Field::name).collect(Collectors.toList()));
     }
+  }
+
+  /**
+   * This method converts values for fields with certain Avro/Parquet data types that require special handling.
+   *
+   * Logical Date Type is converted to actual Date value instead of Epoch Integer which is how it is
+   * represented/stored in parquet.
+   *
+   * @param fieldSchema avro field schema
+   * @param fieldValue avro field value
+   * @return field value either converted (for certain data types) or as it is.
+   */
+  private static Object convertValueForSpecificDataTypes(Schema fieldSchema, Object fieldValue) {
+    if (fieldSchema == null) {
+      return fieldValue;
+    }
+
+    if (isLogicalTypeDate(fieldSchema)) {
+      return LocalDate.ofEpochDay(Long.parseLong(fieldValue.toString()));
+    }
+    return fieldValue;
+  }
+
+  /**
+   * Given an Avro field schema checks whether the field is of Logical Date Type or not.
+   *
+   * @param fieldSchema avro field schema
+   * @return boolean indicating whether fieldSchema is of Avro's Date Logical Type
+   */
+  private static boolean isLogicalTypeDate(Schema fieldSchema) {
+    if (fieldSchema.getType() == Schema.Type.UNION) {
+      return fieldSchema.getTypes().stream().anyMatch(schema -> schema.getLogicalType() == LogicalTypes.date());
+    }
+    return fieldSchema.getLogicalType() == LogicalTypes.date();
   }
 
   /**
@@ -181,8 +220,9 @@ public class DataSourceUtils {
 
   @SuppressWarnings("unchecked")
   public static JavaRDD<HoodieRecord> dropDuplicates(JavaSparkContext jssc, JavaRDD<HoodieRecord> incomingHoodieRecords,
-                                                     HoodieWriteConfig writeConfig, Option<EmbeddedTimelineService> timelineService) {
-    try (HoodieReadClient client = new HoodieReadClient<>(jssc, writeConfig, timelineService)) {
+                                                     HoodieWriteConfig writeConfig) {
+    try {
+      HoodieReadClient client = new HoodieReadClient<>(jssc, writeConfig);
       return client.tagLocation(incomingHoodieRecords)
           .filter(r -> !((HoodieRecord<HoodieRecordPayload>) r).isCurrentLocationKnown());
     } catch (TableNotFoundException e) {
@@ -194,10 +234,10 @@ public class DataSourceUtils {
 
   @SuppressWarnings("unchecked")
   public static JavaRDD<HoodieRecord> dropDuplicates(JavaSparkContext jssc, JavaRDD<HoodieRecord> incomingHoodieRecords,
-                                                     Map<String, String> parameters, Option<EmbeddedTimelineService> timelineService) {
+                                                     Map<String, String> parameters) {
     HoodieWriteConfig writeConfig =
         HoodieWriteConfig.newBuilder().withPath(parameters.get("path")).withProps(parameters).build();
-    return dropDuplicates(jssc, incomingHoodieRecords, writeConfig, timelineService);
+    return dropDuplicates(jssc, incomingHoodieRecords, writeConfig);
   }
 
   public static HiveSyncConfig buildHiveSyncConfig(TypedProperties props, String basePath) {

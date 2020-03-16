@@ -18,7 +18,7 @@
 
 package org.apache.hudi.table;
 
-import org.apache.hudi.WriteStatus;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.avro.model.HoodieActionInstant;
 import org.apache.hudi.avro.model.HoodieCleanerPlan;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
@@ -37,6 +37,7 @@ import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieInstant.State;
 import org.apache.hudi.common.util.FSUtils;
+import org.apache.hudi.common.util.NumericUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.common.util.queue.BoundedInMemoryExecutor;
@@ -46,18 +47,18 @@ import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.HoodieNotSupportedException;
 import org.apache.hudi.exception.HoodieUpsertException;
-import org.apache.hudi.func.CopyOnWriteLazyInsertIterable;
-import org.apache.hudi.func.ParquetReaderIterator;
-import org.apache.hudi.func.SparkBoundedInMemoryExecutor;
-import org.apache.hudi.io.HoodieCleanHelper;
+import org.apache.hudi.execution.CopyOnWriteLazyInsertIterable;
+import org.apache.hudi.client.utils.ParquetReaderIterator;
+import org.apache.hudi.execution.SparkBoundedInMemoryExecutor;
 import org.apache.hudi.io.HoodieCreateHandle;
 import org.apache.hudi.io.HoodieMergeHandle;
 
-import com.google.common.hash.Hashing;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hudi.table.rollback.RollbackHelper;
+import org.apache.hudi.table.rollback.RollbackRequest;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroParquetReader;
@@ -71,7 +72,6 @@ import org.apache.spark.api.java.function.PairFlatMapFunction;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -284,7 +284,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
   @Override
   public HoodieCleanerPlan scheduleClean(JavaSparkContext jsc) {
     try {
-      HoodieCleanHelper cleaner = new HoodieCleanHelper(this, config);
+      CleanHelper cleaner = new CleanHelper(this, config);
       Option<HoodieInstant> earliestInstant = cleaner.getEarliestCommitToRetain();
 
       List<String> partitionsToClean = cleaner.getPartitionPathsToClean(earliestInstant);
@@ -370,7 +370,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
       List<RollbackRequest> rollbackRequests = generateRollbackRequests(instant);
 
       //TODO: We need to persist this as rollback workload and use it in case of partial failures
-      stats = new RollbackExecutor(metaClient, config).performRollback(jsc, instant, rollbackRequests);
+      stats = new RollbackHelper(metaClient, config).performRollback(jsc, instant, rollbackRequests);
     }
     // Delete Inflight instant if enabled
     deleteInflightAndRequestedInstant(deleteInstants, activeTimeline, instant);
@@ -731,8 +731,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
         // pick the target bucket to use based on the weights.
         double totalWeight = 0.0;
         final long totalInserts = Math.max(1, globalStat.getNumInserts());
-        final long hashOfKey =
-            Hashing.md5().hashString(keyLocation._1().getRecordKey(), StandardCharsets.UTF_8).asLong();
+        final long hashOfKey = NumericUtils.getMessageDigestHash("MD5", keyLocation._1().getRecordKey());
         final double r = 1.0 * Math.floorMod(hashOfKey, totalInserts) / totalInserts;
         for (InsertBucket insertBucket : targetBuckets) {
           totalWeight += insertBucket.weight;

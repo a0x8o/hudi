@@ -20,9 +20,10 @@ package org.apache.hudi.utilities.deltastreamer;
 
 import org.apache.hudi.AvroConversionUtils;
 import org.apache.hudi.DataSourceUtils;
-import org.apache.hudi.HoodieWriteClient;
+import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.client.HoodieWriteClient;
 import org.apache.hudi.keygen.KeyGenerator;
-import org.apache.hudi.WriteStatus;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
@@ -49,7 +50,6 @@ import org.apache.hudi.utilities.sources.InputBatch;
 import org.apache.hudi.utilities.transform.Transformer;
 
 import com.codahale.metrics.Timer;
-import com.google.common.base.Preconditions;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.conf.Configuration;
@@ -357,7 +357,7 @@ public class DeltaSync implements Serializable {
     if (cfg.filterDupes) {
       // turn upserts to insert
       cfg.operation = cfg.operation == Operation.UPSERT ? Operation.INSERT : cfg.operation;
-      records = DataSourceUtils.dropDuplicates(jssc, records, writeClient.getConfig(), writeClient.getTimelineServer());
+      records = DataSourceUtils.dropDuplicates(jssc, records, writeClient.getConfig());
     }
 
     boolean isEmpty = records.isEmpty();
@@ -502,10 +502,10 @@ public class DeltaSync implements Serializable {
     HoodieWriteConfig config = builder.build();
 
     // Validate what deltastreamer assumes of write-config to be really safe
-    Preconditions.checkArgument(config.isInlineCompaction() == cfg.isInlineCompactionEnabled());
-    Preconditions.checkArgument(!config.shouldAutoCommit());
-    Preconditions.checkArgument(config.shouldCombineBeforeInsert() == cfg.filterDupes);
-    Preconditions.checkArgument(config.shouldCombineBeforeUpsert());
+    ValidationUtils.checkArgument(config.isInlineCompaction() == cfg.isInlineCompactionEnabled());
+    ValidationUtils.checkArgument(!config.shouldAutoCommit());
+    ValidationUtils.checkArgument(config.shouldCombineBeforeInsert() == cfg.filterDupes);
+    ValidationUtils.checkArgument(config.shouldCombineBeforeUpsert());
 
     return config;
   }

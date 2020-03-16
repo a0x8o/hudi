@@ -21,10 +21,9 @@ package org.apache.hudi.common.util.queue;
 import org.apache.hudi.common.util.DefaultSizeEstimator;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.SizeEstimator;
+import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.exception.HoodieException;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -62,7 +61,6 @@ public class BoundedInMemoryQueue<I, O> implements Iterable<O> {
   // It indicates number of records to cache. We will be using sampled record's average size to
   // determine how many
   // records we should cache and will change (increase/decrease) permits accordingly.
-  @VisibleForTesting
   public final Semaphore rateLimiter = new Semaphore(1);
   // used for sampling records with "RECORD_SAMPLING_RATE" frequency.
   public final AtomicLong samplingRecordCounter = new AtomicLong(-1);
@@ -86,10 +84,8 @@ public class BoundedInMemoryQueue<I, O> implements Iterable<O> {
   private final QueueIterator iterator;
   // indicates rate limit (number of records to cache). it is updated whenever there is a change
   // in avg record size.
-  @VisibleForTesting
   public int currentRateLimit = 1;
   // indicates avg record size in bytes. It is updated whenever a new record is sampled.
-  @VisibleForTesting
   public long avgRecordSizeInBytes = 0;
   // indicates number of samples collected so far.
   private long numSamples = 0;
@@ -119,7 +115,6 @@ public class BoundedInMemoryQueue<I, O> implements Iterable<O> {
     this.iterator = new QueueIterator();
   }
 
-  @VisibleForTesting
   public int size() {
     return this.queue.size();
   }
@@ -267,7 +262,7 @@ public class BoundedInMemoryQueue<I, O> implements Iterable<O> {
 
     @Override
     public O next() {
-      Preconditions.checkState(hasNext() && this.nextRecord != null);
+      ValidationUtils.checkState(hasNext() && this.nextRecord != null);
       final O ret = this.nextRecord;
       this.nextRecord = null;
       return ret;

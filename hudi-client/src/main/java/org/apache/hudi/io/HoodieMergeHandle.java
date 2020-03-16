@@ -18,7 +18,7 @@
 
 package org.apache.hudi.io;
 
-import org.apache.hudi.WriteStatus;
+import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -93,62 +93,8 @@ public class HoodieMergeHandle<T extends HoodieRecordPayload> extends HoodieWrit
   }
 
   @Override
-  public Path makeNewPath(String partitionPath) {
-    Path path = FSUtils.getPartitionPath(config.getBasePath(), partitionPath);
-    try {
-      fs.mkdirs(path); // create a new partition as needed.
-    } catch (IOException e) {
-      throw new HoodieIOException("Failed to make dir " + path, e);
-    }
-
-    return new Path(path.toString(), FSUtils.makeDataFileName(instantTime, writeToken, fileId));
-  }
-
-  @Override
   public Schema getWriterSchema() {
     return writerSchema;
-  }
-
-  /**
-   * Determines whether we can accept the incoming records, into the current file. Depending on
-   * <p>
-   * - Whether it belongs to the same partitionPath as existing records - Whether the current file written bytes lt max
-   * file size
-   */
-  @Override
-  public boolean canWrite(HoodieRecord record) {
-    return false;
-  }
-
-  /**
-   * Perform the actual writing of the given record into the backing file.
-   */
-  @Override
-  public void write(HoodieRecord record, Option<IndexedRecord> insertValue) {
-    // NO_OP
-  }
-
-  /**
-   * Perform the actual writing of the given record into the backing file.
-   */
-  @Override
-  public void write(HoodieRecord record, Option<IndexedRecord> avroRecord, Option<Exception> exception) {
-    Option recordMetadata = record.getData().getMetadata();
-    if (exception.isPresent() && exception.get() instanceof Throwable) {
-      // Not throwing exception from here, since we don't want to fail the entire job for a single record
-      writeStatus.markFailure(record, exception.get(), recordMetadata);
-      LOG.error("Error writing record " + record, exception.get());
-    } else {
-      write(record, avroRecord);
-    }
-  }
-
-  /**
-   * Rewrite the GenericRecord with the Schema containing the Hoodie Metadata fields.
-   */
-  @Override
-  protected GenericRecord rewriteRecord(GenericRecord record) {
-    return HoodieAvroUtils.rewriteRecord(record, writerSchema);
   }
 
   /**
