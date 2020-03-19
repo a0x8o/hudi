@@ -309,6 +309,10 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     return HoodieIndex.IndexType.valueOf(props.getProperty(HoodieIndexConfig.INDEX_TYPE_PROP));
   }
 
+  public String getIndexClass() {
+    return props.getProperty(HoodieIndexConfig.INDEX_CLASS_PROP);
+  }
+
   public int getBloomFilterNumEntries() {
     return Integer.parseInt(props.getProperty(HoodieIndexConfig.BLOOM_FILTER_NUM_ENTRIES));
   }
@@ -496,8 +500,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     return props.getProperty(HoodieMetricsConfig.JMX_HOST);
   }
 
-  public int getJmxPort() {
-    return Integer.parseInt(props.getProperty(HoodieMetricsConfig.JMX_PORT));
+  public String getJmxPort() {
+    return props.getProperty(HoodieMetricsConfig.JMX_PORT);
   }
 
   /**
