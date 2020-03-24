@@ -160,7 +160,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
   }
 
   @Override
-  public HoodieCompactionPlan scheduleCompaction(JavaSparkContext jsc, String commitTime) {
+  public HoodieCompactionPlan scheduleCompaction(JavaSparkContext jsc, String instantTime) {
     throw new HoodieNotSupportedException("Compaction is not supported from a CopyOnWrite table");
   }
 
@@ -170,7 +170,8 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
     throw new HoodieNotSupportedException("Compaction is not supported from a CopyOnWrite table");
   }
 
-  public Iterator<List<WriteStatus>> handleUpdate(String commitTime, String fileId, Iterator<HoodieRecord<T>> recordItr)
+  public Iterator<List<WriteStatus>> handleUpdate(String instantTime, String partitionPath, String fileId,
+                                                  Iterator<HoodieRecord<T>> recordItr)
       throws IOException {
     // This is needed since sometimes some buckets are never picked in getPartition() and end up with 0 records
     if (!recordItr.hasNext()) {
@@ -178,22 +179,22 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
       return Collections.singletonList((List<WriteStatus>) Collections.EMPTY_LIST).iterator();
     }
     // these are updates
-    HoodieMergeHandle upsertHandle = getUpdateHandle(commitTime, fileId, recordItr);
-    return handleUpdateInternal(upsertHandle, commitTime, fileId);
+    HoodieMergeHandle upsertHandle = getUpdateHandle(instantTime, partitionPath, fileId, recordItr);
+    return handleUpdateInternal(upsertHandle, instantTime, fileId);
   }
 
-  public Iterator<List<WriteStatus>> handleUpdate(String commitTime, String fileId,
+  public Iterator<List<WriteStatus>> handleUpdate(String instantTime, String partitionPath, String fileId,
       Map<String, HoodieRecord<T>> keyToNewRecords, HoodieBaseFile oldDataFile) throws IOException {
     // these are updates
-    HoodieMergeHandle upsertHandle = getUpdateHandle(commitTime, fileId, keyToNewRecords, oldDataFile);
-    return handleUpdateInternal(upsertHandle, commitTime, fileId);
+    HoodieMergeHandle upsertHandle = getUpdateHandle(instantTime, partitionPath, fileId, keyToNewRecords, oldDataFile);
+    return handleUpdateInternal(upsertHandle, instantTime, fileId);
   }
 
-  protected Iterator<List<WriteStatus>> handleUpdateInternal(HoodieMergeHandle upsertHandle, String commitTime,
+  protected Iterator<List<WriteStatus>> handleUpdateInternal(HoodieMergeHandle upsertHandle, String instantTime,
       String fileId) throws IOException {
     if (upsertHandle.getOldFilePath() == null) {
       throw new HoodieUpsertException(
-          "Error in finding the old file path at commit " + commitTime + " for fileId: " + fileId);
+          "Error in finding the old file path at commit " + instantTime + " for fileId: " + fileId);
     } else {
       AvroReadSupport.setAvroReadSchema(getHadoopConf(), upsertHandle.getWriterSchema());
       BoundedInMemoryExecutor<GenericRecord, GenericRecord, Void> wrapper = null;
@@ -220,45 +221,46 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
     return Collections.singletonList(Collections.singletonList(upsertHandle.getWriteStatus())).iterator();
   }
 
-  protected HoodieMergeHandle getUpdateHandle(String commitTime, String fileId, Iterator<HoodieRecord<T>> recordItr) {
-    return new HoodieMergeHandle<>(config, commitTime, this, recordItr, fileId);
+  protected HoodieMergeHandle getUpdateHandle(String instantTime, String partitionPath, String fileId, Iterator<HoodieRecord<T>> recordItr) {
+    return new HoodieMergeHandle<>(config, instantTime, this, recordItr, partitionPath, fileId);
   }
 
-  protected HoodieMergeHandle getUpdateHandle(String commitTime, String fileId,
+  protected HoodieMergeHandle getUpdateHandle(String instantTime, String partitionPath, String fileId,
       Map<String, HoodieRecord<T>> keyToNewRecords, HoodieBaseFile dataFileToBeMerged) {
-    return new HoodieMergeHandle<>(config, commitTime, this, keyToNewRecords, fileId, dataFileToBeMerged);
+    return new HoodieMergeHandle<>(config, instantTime, this, keyToNewRecords,
+            partitionPath, fileId, dataFileToBeMerged);
   }
 
-  public Iterator<List<WriteStatus>> handleInsert(String commitTime, String idPfx, Iterator<HoodieRecord<T>> recordItr)
+  public Iterator<List<WriteStatus>> handleInsert(String instantTime, String idPfx, Iterator<HoodieRecord<T>> recordItr)
       throws Exception {
     // This is needed since sometimes some buckets are never picked in getPartition() and end up with 0 records
     if (!recordItr.hasNext()) {
       LOG.info("Empty partition");
       return Collections.singletonList((List<WriteStatus>) Collections.EMPTY_LIST).iterator();
     }
-    return new CopyOnWriteLazyInsertIterable<>(recordItr, config, commitTime, this, idPfx);
+    return new CopyOnWriteLazyInsertIterable<>(recordItr, config, instantTime, this, idPfx);
   }
 
-  public Iterator<List<WriteStatus>> handleInsert(String commitTime, String partitionPath, String fileId,
+  public Iterator<List<WriteStatus>> handleInsert(String instantTime, String partitionPath, String fileId,
       Iterator<HoodieRecord<T>> recordItr) {
     HoodieCreateHandle createHandle =
-        new HoodieCreateHandle(config, commitTime, this, partitionPath, fileId, recordItr);
+        new HoodieCreateHandle(config, instantTime, this, partitionPath, fileId, recordItr);
     createHandle.write();
     return Collections.singletonList(Collections.singletonList(createHandle.close())).iterator();
   }
 
   @SuppressWarnings("unchecked")
   @Override
-  public Iterator<List<WriteStatus>> handleUpsertPartition(String commitTime, Integer partition, Iterator recordItr,
-      Partitioner partitioner) {
+  public Iterator<List<WriteStatus>> handleUpsertPartition(String instantTime, Integer partition, Iterator recordItr,
+                                                           Partitioner partitioner) {
     UpsertPartitioner upsertPartitioner = (UpsertPartitioner) partitioner;
     BucketInfo binfo = upsertPartitioner.getBucketInfo(partition);
     BucketType btype = binfo.bucketType;
     try {
       if (btype.equals(BucketType.INSERT)) {
-        return handleInsert(commitTime, binfo.fileIdPrefix, recordItr);
+        return handleInsert(instantTime, binfo.fileIdPrefix, recordItr);
       } else if (btype.equals(BucketType.UPDATE)) {
-        return handleUpdate(commitTime, binfo.fileIdPrefix, recordItr);
+        return handleUpdate(instantTime, binfo.partitionPath, binfo.fileIdPrefix, recordItr);
       } else {
         throw new HoodieUpsertException("Unknown bucketType " + btype + " for partition :" + partition);
       }
@@ -270,9 +272,9 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
   }
 
   @Override
-  public Iterator<List<WriteStatus>> handleInsertPartition(String commitTime, Integer partition, Iterator recordItr,
-      Partitioner partitioner) {
-    return handleUpsertPartition(commitTime, partition, recordItr, partitioner);
+  public Iterator<List<WriteStatus>> handleInsertPartition(String instantTime, Integer partition, Iterator recordItr,
+                                                           Partitioner partitioner) {
+    return handleUpsertPartition(instantTime, partition, recordItr, partitioner);
   }
 
   /**
@@ -523,12 +525,14 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
 
     BucketType bucketType;
     String fileIdPrefix;
+    String partitionPath;
 
     @Override
     public String toString() {
       final StringBuilder sb = new StringBuilder("BucketInfo {");
       sb.append("bucketType=").append(bucketType).append(", ");
-      sb.append("fileIdPrefix=").append(fileIdPrefix);
+      sb.append("fileIdPrefix=").append(fileIdPrefix).append(", ");
+      sb.append("partitionPath=").append(partitionPath);
       sb.append('}');
       return sb.toString();
     }
@@ -585,18 +589,22 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
 
     private void assignUpdates(WorkloadProfile profile) {
       // each update location gets a partition
-      WorkloadStat gStat = profile.getGlobalStat();
-      for (Map.Entry<String, Pair<String, Long>> updateLocEntry : gStat.getUpdateLocationToCount().entrySet()) {
-        addUpdateBucket(updateLocEntry.getKey());
+      Set<Map.Entry<String, WorkloadStat>> partitionStatEntries = profile.getPartitionPathStatMap().entrySet();
+      for (Map.Entry<String, WorkloadStat> partitionStat : partitionStatEntries) {
+        for (Map.Entry<String, Pair<String, Long>> updateLocEntry :
+                partitionStat.getValue().getUpdateLocationToCount().entrySet()) {
+          addUpdateBucket(partitionStat.getKey(), updateLocEntry.getKey());
+        }
       }
     }
 
-    private int addUpdateBucket(String fileIdHint) {
+    private int addUpdateBucket(String partitionPath, String fileIdHint) {
       int bucket = totalBuckets;
       updateLocationToBucket.put(fileIdHint, bucket);
       BucketInfo bucketInfo = new BucketInfo();
       bucketInfo.bucketType = BucketType.UPDATE;
       bucketInfo.fileIdPrefix = fileIdHint;
+      bucketInfo.partitionPath = partitionPath;
       bucketInfoMap.put(totalBuckets, bucketInfo);
       totalBuckets++;
       return bucket;
@@ -631,7 +639,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
                 bucket = updateLocationToBucket.get(smallFile.location.getFileId());
                 LOG.info("Assigning " + recordsToAppend + " inserts to existing update bucket " + bucket);
               } else {
-                bucket = addUpdateBucket(smallFile.location.getFileId());
+                bucket = addUpdateBucket(partitionPath, smallFile.location.getFileId());
                 LOG.info("Assigning " + recordsToAppend + " inserts to new update bucket " + bucket);
               }
               bucketNumbers.add(bucket);
@@ -655,6 +663,7 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
               recordsPerBucket.add(totalUnassignedInserts / insertBuckets);
               BucketInfo bucketInfo = new BucketInfo();
               bucketInfo.bucketType = BucketType.INSERT;
+              bucketInfo.partitionPath = partitionPath;
               bucketInfo.fileIdPrefix = FSUtils.createNewFileIdPfx();
               bucketInfoMap.put(totalBuckets, bucketInfo);
               totalBuckets++;
