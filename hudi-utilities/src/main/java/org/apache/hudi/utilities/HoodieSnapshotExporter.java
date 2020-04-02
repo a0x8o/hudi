@@ -18,17 +18,18 @@
 
 package org.apache.hudi.utilities;
 
-import org.apache.hudi.common.SerializableConfiguration;
+import org.apache.hudi.common.config.SerializableConfiguration;
+import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.table.HoodieTimeline;
-import org.apache.hudi.common.table.TableFileSystemView.BaseFileOnlyView;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
-import org.apache.hudi.common.util.FSUtils;
+import org.apache.hudi.common.table.view.TableFileSystemView.BaseFileOnlyView;
+import org.apache.hudi.common.util.CollectionUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.StringUtils;
@@ -38,7 +39,6 @@ import com.beust.jcommander.IValueValidator;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
-import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
@@ -83,7 +83,7 @@ public class HoodieSnapshotExporter {
   public static class OutputFormatValidator implements IValueValidator<String> {
 
     static final String HUDI = "hudi";
-    static final List<String> FORMATS = ImmutableList.of("json", "parquet", HUDI);
+    static final List<String> FORMATS = CollectionUtils.createImmutableList("json", "parquet", HUDI);
 
     @Override
     public void validate(String name, String value) {

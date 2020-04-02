@@ -18,25 +18,26 @@
 
 package org.apache.hudi.table;
 
-import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.avro.model.HoodieActionInstant;
 import org.apache.hudi.avro.model.HoodieCleanerPlan;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.client.utils.ParquetReaderIterator;
 import org.apache.hudi.common.HoodieCleanStat;
 import org.apache.hudi.common.HoodieRollbackStat;
+import org.apache.hudi.common.fs.FSUtils;
+import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
-import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieRollingStatMetadata;
-import org.apache.hudi.common.table.HoodieTimeline;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieInstant.State;
-import org.apache.hudi.common.util.FSUtils;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.NumericUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
@@ -48,17 +49,16 @@ import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.HoodieNotSupportedException;
 import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.execution.CopyOnWriteLazyInsertIterable;
-import org.apache.hudi.client.utils.ParquetReaderIterator;
 import org.apache.hudi.execution.SparkBoundedInMemoryExecutor;
 import org.apache.hudi.io.HoodieCreateHandle;
 import org.apache.hudi.io.HoodieMergeHandle;
+import org.apache.hudi.table.rollback.RollbackHelper;
+import org.apache.hudi.table.rollback.RollbackRequest;
 
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hudi.table.rollback.RollbackHelper;
-import org.apache.hudi.table.rollback.RollbackRequest;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroParquetReader;
@@ -81,6 +81,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.spark.api.java.function.PairFunction;
 import scala.Tuple2;
 
 /**
@@ -142,16 +143,16 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
   }
 
   @Override
-  public Partitioner getUpsertPartitioner(WorkloadProfile profile) {
+  public Partitioner getUpsertPartitioner(WorkloadProfile profile, JavaSparkContext jsc) {
     if (profile == null) {
       throw new HoodieUpsertException("Need workload profile to construct the upsert partitioner.");
     }
-    return new UpsertPartitioner(profile);
+    return new UpsertPartitioner(profile, jsc);
   }
 
   @Override
-  public Partitioner getInsertPartitioner(WorkloadProfile profile) {
-    return getUpsertPartitioner(profile);
+  public Partitioner getInsertPartitioner(WorkloadProfile profile, JavaSparkContext jsc) {
+    return getUpsertPartitioner(profile, jsc);
   }
 
   @Override
@@ -222,13 +223,13 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
   }
 
   protected HoodieMergeHandle getUpdateHandle(String instantTime, String partitionPath, String fileId, Iterator<HoodieRecord<T>> recordItr) {
-    return new HoodieMergeHandle<>(config, instantTime, this, recordItr, partitionPath, fileId);
+    return new HoodieMergeHandle<>(config, instantTime, this, recordItr, partitionPath, fileId, sparkTaskContextSupplier);
   }
 
   protected HoodieMergeHandle getUpdateHandle(String instantTime, String partitionPath, String fileId,
       Map<String, HoodieRecord<T>> keyToNewRecords, HoodieBaseFile dataFileToBeMerged) {
     return new HoodieMergeHandle<>(config, instantTime, this, keyToNewRecords,
-            partitionPath, fileId, dataFileToBeMerged);
+            partitionPath, fileId, dataFileToBeMerged, sparkTaskContextSupplier);
   }
 
   public Iterator<List<WriteStatus>> handleInsert(String instantTime, String idPfx, Iterator<HoodieRecord<T>> recordItr)
@@ -238,13 +239,13 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
       LOG.info("Empty partition");
       return Collections.singletonList((List<WriteStatus>) Collections.EMPTY_LIST).iterator();
     }
-    return new CopyOnWriteLazyInsertIterable<>(recordItr, config, instantTime, this, idPfx);
+    return new CopyOnWriteLazyInsertIterable<>(recordItr, config, instantTime, this, idPfx, sparkTaskContextSupplier);
   }
 
   public Iterator<List<WriteStatus>> handleInsert(String instantTime, String partitionPath, String fileId,
       Iterator<HoodieRecord<T>> recordItr) {
     HoodieCreateHandle createHandle =
-        new HoodieCreateHandle(config, instantTime, this, partitionPath, fileId, recordItr);
+        new HoodieCreateHandle(config, instantTime, this, partitionPath, fileId, recordItr, sparkTaskContextSupplier);
     createHandle.write();
     return Collections.singletonList(Collections.singletonList(createHandle.close())).iterator();
   }
@@ -573,14 +574,14 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
      */
     protected HoodieRollingStatMetadata rollingStatMetadata;
 
-    UpsertPartitioner(WorkloadProfile profile) {
+    UpsertPartitioner(WorkloadProfile profile, JavaSparkContext jsc) {
       updateLocationToBucket = new HashMap<>();
       partitionPathToInsertBuckets = new HashMap<>();
       bucketInfoMap = new HashMap<>();
       globalStat = profile.getGlobalStat();
       rollingStatMetadata = getRollingStats();
       assignUpdates(profile);
-      assignInserts(profile);
+      assignInserts(profile, jsc);
 
       LOG.info("Total Buckets :" + totalBuckets + ", buckets info => " + bucketInfoMap + ", \n"
           + "Partition to insert buckets => " + partitionPathToInsertBuckets + ", \n"
@@ -610,18 +611,24 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
       return bucket;
     }
 
-    private void assignInserts(WorkloadProfile profile) {
+    private void assignInserts(WorkloadProfile profile, JavaSparkContext jsc) {
       // for new inserts, compute buckets depending on how many records we have for each partition
       Set<String> partitionPaths = profile.getPartitionPaths();
       long averageRecordSize =
           averageBytesPerRecord(metaClient.getActiveTimeline().getCommitTimeline().filterCompletedInstants(),
               config.getCopyOnWriteRecordSizeEstimate());
       LOG.info("AvgRecordSize => " + averageRecordSize);
+
+      Map<String, List<SmallFile>> partitionSmallFilesMap =
+              getSmallFilesForPartitions(new ArrayList<String>(partitionPaths), jsc);
+
       for (String partitionPath : partitionPaths) {
         WorkloadStat pStat = profile.getWorkloadStat(partitionPath);
         if (pStat.getNumInserts() > 0) {
 
-          List<SmallFile> smallFiles = getSmallFiles(partitionPath);
+          List<SmallFile> smallFiles = partitionSmallFilesMap.get(partitionPath);
+          this.smallFiles.addAll(smallFiles);
+
           LOG.info("For partitionPath : " + partitionPath + " Small Files => " + smallFiles);
 
           long totalUnassignedInserts = pStat.getNumInserts();
@@ -684,6 +691,18 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
       }
     }
 
+    private Map<String, List<SmallFile>> getSmallFilesForPartitions(List<String> partitionPaths, JavaSparkContext jsc) {
+
+      Map<String, List<SmallFile>> partitionSmallFilesMap = new HashMap<>();
+      if (partitionPaths != null && partitionPaths.size() > 0) {
+        JavaRDD<String> partitionPathRdds = jsc.parallelize(partitionPaths, partitionPaths.size());
+        partitionSmallFilesMap = partitionPathRdds.mapToPair((PairFunction<String, String, List<SmallFile>>)
+            partitionPath -> new Tuple2<>(partitionPath, getSmallFiles(partitionPath))).collectAsMap();
+      }
+
+      return partitionSmallFilesMap;
+    }
+
     /**
      * Returns a list of small files in the given partition path.
      */
@@ -706,8 +725,6 @@ public class HoodieCopyOnWriteTable<T extends HoodieRecordPayload> extends Hoodi
             sf.location = new HoodieRecordLocation(FSUtils.getCommitTime(filename), FSUtils.getFileId(filename));
             sf.sizeBytes = file.getFileSize();
             smallFileLocations.add(sf);
-            // Update the global small files list
-            smallFiles.add(sf);
           }
         }
       }

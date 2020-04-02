@@ -18,22 +18,23 @@
 
 package org.apache.hudi.common;
 
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieAvroPayload;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.table.HoodieTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
-import org.apache.hudi.common.util.AvroUtils;
-import org.apache.hudi.common.util.FSUtils;
-import org.apache.hudi.common.util.HoodieAvroUtils;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
+import org.apache.hudi.common.table.timeline.TimelineMetadataUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.exception.HoodieIOException;
 
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.conf.Configuration;
@@ -46,6 +47,7 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -84,15 +86,18 @@ public class HoodieTestDataGenerator {
       + "{\"name\": \"amount\",\"type\": \"double\"},{\"name\": \"currency\", \"type\": \"string\"}]}},";
   public static final String FARE_FLATTENED_SCHEMA = "{\"name\": \"fare\", \"type\": \"double\"},"
       + "{\"name\": \"currency\", \"type\": \"string\"},";
+  public static final String TIP_NESTED_SCHEMA = "{\"name\": \"tip_history\", \"type\": {\"type\": \"array\", \"items\": {\"type\": \"record\", \"name\": \"tip_history\", \"fields\": ["
+      + "{\"name\": \"amount\", \"type\": \"double\"}, {\"name\": \"currency\", \"type\": \"string\"}]}}},";
+  public static final String MAP_TYPE_SCHEMA = "{\"name\": \"city_to_state\", \"type\": {\"type\": \"map\", \"values\": \"string\"}},";
 
   public static final String TRIP_EXAMPLE_SCHEMA =
-      TRIP_SCHEMA_PREFIX + FARE_NESTED_SCHEMA + TRIP_SCHEMA_SUFFIX;
+      TRIP_SCHEMA_PREFIX + MAP_TYPE_SCHEMA + FARE_NESTED_SCHEMA + TIP_NESTED_SCHEMA + TRIP_SCHEMA_SUFFIX;
   public static final String TRIP_FLATTENED_SCHEMA =
       TRIP_SCHEMA_PREFIX + FARE_FLATTENED_SCHEMA + TRIP_SCHEMA_SUFFIX;
 
   public static final String NULL_SCHEMA = Schema.create(Schema.Type.NULL).toString();
   public static final String TRIP_HIVE_COLUMN_TYPES = "double,string,string,string,double,double,double,double,"
-                                                  + "struct<amount:double,currency:string>,boolean";
+      + "map<string,string>,struct<amount:double,currency:string>,array<struct<amount:double,currency:string>>,boolean";
 
   public static final Schema AVRO_SCHEMA = new Schema.Parser().parse(TRIP_EXAMPLE_SCHEMA);
   public static final Schema AVRO_SCHEMA_WITH_METADATA_FIELDS =
@@ -194,10 +199,20 @@ public class HoodieTestDataGenerator {
       rec.put("fare", RAND.nextDouble() * 100);
       rec.put("currency", "USD");
     } else {
+      rec.put("city_to_state", Collections.singletonMap("LA", "CA"));
+
       GenericRecord fareRecord = new GenericData.Record(AVRO_SCHEMA.getField("fare").schema());
       fareRecord.put("amount", RAND.nextDouble() * 100);
       fareRecord.put("currency", "USD");
       rec.put("fare", fareRecord);
+
+      GenericArray<GenericRecord> tipHistoryArray = new GenericData.Array<>(1, AVRO_SCHEMA.getField("tip_history").schema());
+      Schema tipSchema = new Schema.Parser().parse(AVRO_SCHEMA.getField("tip_history").schema().toString()).getElementType();
+      GenericRecord tipRecord = new GenericData.Record(tipSchema);
+      tipRecord.put("amount", RAND.nextDouble() * 100);
+      tipRecord.put("currency", "USD");
+      tipHistoryArray.add(tipRecord);
+      rec.put("tip_history", tipHistoryArray);
     }
 
     if (isDeleteRecord) {
@@ -252,7 +267,7 @@ public class HoodieTestDataGenerator {
     try (FSDataOutputStream os = fs.create(commitFile, true)) {
       HoodieCompactionPlan workload = new HoodieCompactionPlan();
       // Write empty commit metadata
-      os.writeBytes(new String(AvroUtils.serializeCompactionPlan(workload).get(), StandardCharsets.UTF_8));
+      os.writeBytes(new String(TimelineMetadataUtils.serializeCompactionPlan(workload).get(), StandardCharsets.UTF_8));
     }
   }
 
