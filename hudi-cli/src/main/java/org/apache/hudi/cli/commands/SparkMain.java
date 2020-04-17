@@ -166,7 +166,7 @@ public class SparkMain {
     return masterContained.contains(command);
   }
 
-  private static void clean(JavaSparkContext jsc, String basePath, String propsFilePath,
+  protected static void clean(JavaSparkContext jsc, String basePath, String propsFilePath,
       List<String> configs) {
     HoodieCleaner.Config cfg = new HoodieCleaner.Config();
     cfg.basePath = basePath;
@@ -283,7 +283,7 @@ public class SparkMain {
 
   private static int rollbackToSavepoint(JavaSparkContext jsc, String savepointTime, String basePath) throws Exception {
     HoodieWriteClient client = createHoodieClient(jsc, basePath);
-    if (client.rollbackToSavepoint(savepointTime)) {
+    if (client.restoreToSavepoint(savepointTime)) {
       LOG.info(String.format("The commit \"%s\" rolled back.", savepointTime));
       return 0;
     } else {
