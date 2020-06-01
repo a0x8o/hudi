@@ -18,6 +18,7 @@
 
 package org.apache.hudi.avro;
 
+import org.apache.avro.JsonProperties;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.SchemaCompatabilityException;
@@ -63,7 +64,7 @@ public class HoodieAvroUtils {
   private static ThreadLocal<BinaryDecoder> reuseDecoder = ThreadLocal.withInitial(() -> null);
 
   // All metadata fields are optional strings.
-  private static final Schema METADATA_FIELD_SCHEMA =
+  static final Schema METADATA_FIELD_SCHEMA =
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.STRING)));
 
   private static final Schema RECORD_KEY_SCHEMA = initRecordKeySchema();
@@ -95,7 +96,6 @@ public class HoodieAvroUtils {
     writer.write(record, jsonEncoder);
     jsonEncoder.flush();
     return out.toByteArray();
-    //metadata.toJsonString().getBytes(StandardCharsets.UTF_8));
   }
 
   /**
@@ -141,15 +141,15 @@ public class HoodieAvroUtils {
     List<Schema.Field> parentFields = new ArrayList<>();
 
     Schema.Field commitTimeField =
-        new Schema.Field(HoodieRecord.COMMIT_TIME_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", (Object) null);
+        new Schema.Field(HoodieRecord.COMMIT_TIME_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", JsonProperties.NULL_VALUE);
     Schema.Field commitSeqnoField =
-        new Schema.Field(HoodieRecord.COMMIT_SEQNO_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", (Object) null);
+        new Schema.Field(HoodieRecord.COMMIT_SEQNO_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", JsonProperties.NULL_VALUE);
     Schema.Field recordKeyField =
-        new Schema.Field(HoodieRecord.RECORD_KEY_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", (Object) null);
+        new Schema.Field(HoodieRecord.RECORD_KEY_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", JsonProperties.NULL_VALUE);
     Schema.Field partitionPathField =
-        new Schema.Field(HoodieRecord.PARTITION_PATH_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", (Object) null);
+        new Schema.Field(HoodieRecord.PARTITION_PATH_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", JsonProperties.NULL_VALUE);
     Schema.Field fileNameField =
-        new Schema.Field(HoodieRecord.FILENAME_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", (Object) null);
+        new Schema.Field(HoodieRecord.FILENAME_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", JsonProperties.NULL_VALUE);
 
     parentFields.add(commitTimeField);
     parentFields.add(commitSeqnoField);
@@ -195,6 +195,24 @@ public class HoodieAvroUtils {
 
   public static Schema getRecordKeySchema() {
     return RECORD_KEY_SCHEMA;
+  }
+
+  /**
+   * Fetch schema for record key and partition path.
+   */
+  public static Schema getRecordKeyPartitionPathSchema() {
+    List<Schema.Field> toBeAddedFields = new ArrayList<>();
+    Schema recordSchema = Schema.createRecord("HoodieRecordKey", "", "", false);
+
+    Schema.Field recordKeyField =
+        new Schema.Field(HoodieRecord.RECORD_KEY_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", NullNode.getInstance());
+    Schema.Field partitionPathField =
+        new Schema.Field(HoodieRecord.PARTITION_PATH_METADATA_FIELD, METADATA_FIELD_SCHEMA, "", NullNode.getInstance());
+
+    toBeAddedFields.add(recordKeyField);
+    toBeAddedFields.add(partitionPathField);
+    recordSchema.setFields(toBeAddedFields);
+    return recordSchema;
   }
 
   public static GenericRecord addHoodieKeyToRecord(GenericRecord record, String recordKey, String partitionPath,
@@ -253,7 +271,11 @@ public class HoodieAvroUtils {
     GenericRecord newRecord = new GenericData.Record(newSchema);
     for (Schema.Field f : fieldsToWrite) {
       if (record.get(f.name()) == null) {
-        newRecord.put(f.name(), f.defaultVal());
+        if (f.defaultVal() instanceof JsonProperties.Null) {
+          newRecord.put(f.name(), null);
+        } else {
+          newRecord.put(f.name(), f.defaultVal());
+        }
       } else {
         newRecord.put(f.name(), record.get(f.name()));
       }

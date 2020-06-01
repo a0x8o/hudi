@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Goes through steps described in https://hudi.incubator.apache.org/docker_demo.html
+ * Goes through steps described in https://hudi.apache.org/docker_demo.html
  *
  * To run this as a standalone test in the IDE or command line. First bring up the demo setup using
  * `docker/setup_demo.sh` and then run the test class as you would do normally.
@@ -168,8 +168,8 @@ public class ITTestHoodieDemo extends ITTestBase {
   private void testSparkSQLAfterFirstBatch() throws Exception {
     Pair<String, String> stdOutErrPair = executeSparkSQLCommand(SPARKSQL_BATCH1_COMMANDS, true);
     assertStdOutContains(stdOutErrPair, "|default |stock_ticks_cow   |false      |\n"
-                                                    + "|default |stock_ticks_mor_ro |false      |\n" +
-                                                      "|default |stock_ticks_mor_rt |false      |");
+                                                    + "|default |stock_ticks_mor_ro |false      |\n"
+                                                    + "|default |stock_ticks_mor_rt |false      |");
     assertStdOutContains(stdOutErrPair,
         "+------+-------------------+\n|GOOG  |2018-08-31 10:29:00|\n+------+-------------------+", 3);
     assertStdOutContains(stdOutErrPair, "|GOOG  |2018-08-31 09:59:00|6330  |1230.5   |1230.02 |", 3);
