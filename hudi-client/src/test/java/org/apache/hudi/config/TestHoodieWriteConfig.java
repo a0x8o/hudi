@@ -20,7 +20,7 @@ package org.apache.hudi.config;
 
 import org.apache.hudi.config.HoodieWriteConfig.Builder;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,7 +30,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestHoodieWriteConfig {
 
@@ -50,8 +50,8 @@ public class TestHoodieWriteConfig {
       inputStream.close();
     }
     HoodieWriteConfig config = builder.build();
-    assertEquals(config.getMaxCommitsToKeep(), 5);
-    assertEquals(config.getMinCommitsToKeep(), 2);
+    assertEquals(5, config.getMaxCommitsToKeep());
+    assertEquals(2, config.getMinCommitsToKeep());
   }
 
   private ByteArrayOutputStream saveParamsIntoOutputStream(Map<String, String> params) throws IOException {
