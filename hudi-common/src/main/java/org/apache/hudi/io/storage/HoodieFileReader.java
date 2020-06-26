@@ -16,26 +16,29 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.io;
-
-import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.util.collection.Pair;
-import org.apache.hudi.config.HoodieWriteConfig;
-import org.apache.hudi.table.HoodieTable;
+package org.apache.hudi.io.storage;
 
 import java.io.IOException;
+import java.util.Iterator;
+import java.util.Set;
 
-/**
- * Extract range information for a given file slice.
- */
-public class HoodieRangeInfoHandle<T extends HoodieRecordPayload> extends HoodieReadHandle<T> {
+import org.apache.avro.Schema;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.hudi.common.bloom.BloomFilter;
 
-  public HoodieRangeInfoHandle(HoodieWriteConfig config, HoodieTable<T> hoodieTable,
-      Pair<String, String> partitionPathFilePair) {
-    super(config, null, hoodieTable, partitionPathFilePair);
-  }
+public interface HoodieFileReader<R extends IndexedRecord> {
 
-  public String[] getMinMaxKeys() throws IOException {
-    return createNewFileReader().readMinMaxRecordKeys();
-  }
+  public String[] readMinMaxRecordKeys();
+
+  public BloomFilter readBloomFilter();
+
+  public Set<String> filterRowKeys(Set<String> candidateRowKeys);
+
+  public Iterator<R> getRecordIterator(Schema schema) throws IOException;
+
+  Schema getSchema();
+
+  void close();
+
+  long getTotalRecords();
 }
