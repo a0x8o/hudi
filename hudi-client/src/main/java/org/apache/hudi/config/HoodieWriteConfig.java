@@ -54,6 +54,8 @@ import java.util.stream.Collectors;
 public class HoodieWriteConfig extends DefaultHoodieConfig {
 
   public static final String TABLE_NAME = "hoodie.table.name";
+  public static final String DEFAULT_ROLLBACK_USING_MARKERS = "false";
+  public static final String ROLLBACK_USING_MARKERS = "hoodie.rollback.using.markers";
   public static final String TIMELINE_LAYOUT_VERSION = "hoodie.timeline.layout.version";
   public static final String BASE_PATH_PROP = "hoodie.base.path";
   public static final String AVRO_SCHEMA = "hoodie.avro.schema";
@@ -195,6 +197,10 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
 
   public int getRollbackParallelism() {
     return Integer.parseInt(props.getProperty(ROLLBACK_PARALLELISM));
+  }
+
+  public boolean shouldRollbackUsingMarkers() {
+    return Boolean.parseBoolean(props.getProperty(ROLLBACK_USING_MARKERS));
   }
 
   public int getWriteBufferLimitBytes() {
@@ -593,6 +599,10 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
         HoodieMetricsDatadogConfig.DATADOG_METRIC_TAGS).split("\\s*,\\s*")).collect(Collectors.toList());
   }
 
+  public String getMetricReporterClassName() {
+    return props.getProperty(HoodieMetricsConfig.METRICS_REPORTER_CLASS);
+  }
+
   /**
    * memory configs.
    */
@@ -632,6 +642,17 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     return clientSpecifiedViewStorageConfig;
   }
 
+  /**
+   * Commit call back configs.
+   */
+  public boolean writeCommitCallbackOn() {
+    return Boolean.parseBoolean(props.getProperty(HoodieWriteCommitCallbackConfig.CALLBACK_ON));
+  }
+
+  public String getCallbackClass() {
+    return props.getProperty(HoodieWriteCommitCallbackConfig.CALLBACK_CLASS_PROP);
+  }
+
   public static class Builder {
 
     private final Properties props = new Properties();
@@ -642,6 +663,7 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     private boolean isMemoryConfigSet = false;
     private boolean isViewConfigSet = false;
     private boolean isConsistencyGuardSet = false;
+    private boolean isCallbackConfigSet = false;
 
     public Builder fromFile(File propertiesFile) throws IOException {
       try (FileReader reader = new FileReader(propertiesFile)) {
@@ -707,6 +729,11 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
 
     public Builder withRollbackParallelism(int rollbackParallelism) {
       props.setProperty(ROLLBACK_PARALLELISM, String.valueOf(rollbackParallelism));
+      return this;
+    }
+
+    public Builder withRollbackUsingMarkers(boolean rollbackUsingMarkers) {
+      props.setProperty(ROLLBACK_USING_MARKERS, String.valueOf(rollbackUsingMarkers));
       return this;
     }
 
@@ -783,6 +810,12 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
       return this;
     }
 
+    public Builder withCallbackConfig(HoodieWriteCommitCallbackConfig callbackConfig) {
+      props.putAll(callbackConfig.getProps());
+      isCallbackConfigSet = true;
+      return this;
+    }
+
     public Builder withFinalizeWriteParallelism(int parallelism) {
       props.setProperty(FINALIZE_WRITE_PARALLELISM, String.valueOf(parallelism));
       return this;
@@ -807,6 +840,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
       setDefaultOnCondition(props, !props.containsKey(DELETE_PARALLELISM), DELETE_PARALLELISM, DEFAULT_PARALLELISM);
       setDefaultOnCondition(props, !props.containsKey(ROLLBACK_PARALLELISM), ROLLBACK_PARALLELISM,
           DEFAULT_ROLLBACK_PARALLELISM);
+      setDefaultOnCondition(props, !props.containsKey(ROLLBACK_USING_MARKERS), ROLLBACK_USING_MARKERS,
+          DEFAULT_ROLLBACK_USING_MARKERS);
       setDefaultOnCondition(props, !props.containsKey(COMBINE_BEFORE_INSERT_PROP), COMBINE_BEFORE_INSERT_PROP,
           DEFAULT_COMBINE_BEFORE_INSERT);
       setDefaultOnCondition(props, !props.containsKey(COMBINE_BEFORE_UPSERT_PROP), COMBINE_BEFORE_UPSERT_PROP,
@@ -848,6 +883,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
           FileSystemViewStorageConfig.newBuilder().fromProperties(props).build());
       setDefaultOnCondition(props, !isConsistencyGuardSet,
           ConsistencyGuardConfig.newBuilder().fromProperties(props).build());
+      setDefaultOnCondition(props, !isCallbackConfigSet,
+          HoodieWriteCommitCallbackConfig.newBuilder().fromProperties(props).build());
 
       setDefaultOnCondition(props, !props.containsKey(TIMELINE_LAYOUT_VERSION), TIMELINE_LAYOUT_VERSION,
           String.valueOf(TimelineLayoutVersion.CURR_VERSION));
