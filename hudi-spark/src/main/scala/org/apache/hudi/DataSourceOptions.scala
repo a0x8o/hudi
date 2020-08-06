@@ -19,6 +19,7 @@ package org.apache.hudi
 
 import org.apache.hudi.common.model.HoodieTableType
 import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload
+import org.apache.hudi.hive.HiveSyncTool
 import org.apache.hudi.hive.SlashEncodedDayPartitionValueExtractor
 import org.apache.hudi.keygen.SimpleKeyGenerator
 import org.apache.log4j.LogManager
@@ -185,13 +186,6 @@ object DataSourceWriteOptions {
   val DEFAULT_PAYLOAD_OPT_VAL = classOf[OverwriteWithLatestAvroPayload].getName
 
   /**
-   * Field used in OverwriteWithLatestAvroPayload combineAndGetUpdateValue, When two records have the same
-   * key value, we will check if the new record is deleted by the delete field.
-   */
-  val DELETE_FIELD_OPT_KEY = "hoodie.datasource.write.delete.field"
-  val DEFAULT_DELETE_FIELD_OPT_VAL = "_hoodie_is_deleted"
-
-  /**
     * Record key field. Value to be used as the `recordKey` component of `HoodieKey`. Actual value
     * will be obtained by invoking .toString() on the field value. Nested fields can be specified using
     * the dot notation eg: `a.b.c`
@@ -258,11 +252,14 @@ object DataSourceWriteOptions {
     */
   val STREAMING_IGNORE_FAILED_BATCH_OPT_KEY = "hoodie.datasource.write.streaming.ignore.failed.batch"
   val DEFAULT_STREAMING_IGNORE_FAILED_BATCH_OPT_VAL = "true"
+  val META_SYNC_CLIENT_TOOL_CLASS = "hoodie.meta.sync.client.tool.class"
+  val DEFAULT_META_SYNC_CLIENT_TOOL_CLASS = classOf[HiveSyncTool].getName
 
   // HIVE SYNC SPECIFIC CONFIGS
   //NOTE: DO NOT USE uppercase for the keys as they are internally lower-cased. Using upper-cases causes
   // unexpected issues with config getting reset
   val HIVE_SYNC_ENABLED_OPT_KEY = "hoodie.datasource.hive_sync.enable"
+  val META_SYNC_ENABLED_OPT_KEY = "hoodie.datasource.meta.sync.enable"
   val HIVE_DATABASE_OPT_KEY = "hoodie.datasource.hive_sync.database"
   val HIVE_TABLE_OPT_KEY = "hoodie.datasource.hive_sync.table"
   val HIVE_BASE_FILE_FORMAT_OPT_KEY = "hoodie.datasource.hive_sync.base_file_format"
@@ -277,6 +274,7 @@ object DataSourceWriteOptions {
 
   // DEFAULT FOR HIVE SPECIFIC CONFIGS
   val DEFAULT_HIVE_SYNC_ENABLED_OPT_VAL = "false"
+  val DEFAULT_META_SYNC_ENABLED_OPT_VAL = "false"
   val DEFAULT_HIVE_DATABASE_OPT_VAL = "default"
   val DEFAULT_HIVE_TABLE_OPT_VAL = "unknown"
   val DEFAULT_HIVE_BASE_FILE_FORMAT_OPT_VAL = "PARQUET"
@@ -288,4 +286,8 @@ object DataSourceWriteOptions {
   val DEFAULT_HIVE_ASSUME_DATE_PARTITION_OPT_VAL = "false"
   val DEFAULT_USE_PRE_APACHE_INPUT_FORMAT_OPT_VAL = "false"
   val DEFAULT_HIVE_USE_JDBC_OPT_VAL = "true"
+
+  // Async Compaction - Enabled by default for MOR
+  val ASYNC_COMPACT_ENABLE_KEY = "hoodie.datasource.compaction.async.enable"
+  val DEFAULT_ASYNC_COMPACT_ENABLE_VAL = "true"
 }
