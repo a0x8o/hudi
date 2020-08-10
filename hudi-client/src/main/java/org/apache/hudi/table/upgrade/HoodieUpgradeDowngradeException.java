@@ -16,11 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.metrics;
+package org.apache.hudi.table.upgrade;
 
-/**
- * Types of the reporter supported, hudi also supports user defined reporter.
- */
-public enum MetricsReporterType {
-  GRAPHITE, INMEMORY, JMX, DATADOG, CONSOLE, PROMETHEUS_PUSHGATEWAY, PROMETHEUS
+import org.apache.hudi.exception.HoodieException;
+
+public class HoodieUpgradeDowngradeException extends HoodieException {
+
+  public HoodieUpgradeDowngradeException(String msg, Throwable t) {
+    super(msg, t);
+  }
+
+  public HoodieUpgradeDowngradeException(int fromVersion, int toVersion, boolean upgrade) {
+    super(String.format("Cannot %s from version %s -> %s", upgrade ? "upgrade" : "downgrade", fromVersion, toVersion), null);
+  }
 }

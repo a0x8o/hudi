@@ -16,11 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.metrics;
+package org.apache.hudi.table.upgrade;
+
+import org.apache.hudi.config.HoodieWriteConfig;
+
+import org.apache.spark.api.java.JavaSparkContext;
 
 /**
- * Types of the reporter supported, hudi also supports user defined reporter.
+ * Interface to assist in upgrading Hoodie table.
  */
-public enum MetricsReporterType {
-  GRAPHITE, INMEMORY, JMX, DATADOG, CONSOLE, PROMETHEUS_PUSHGATEWAY, PROMETHEUS
+public interface UpgradeHandler {
+
+  /**
+   * to be invoked to upgrade hoodie table from one version to a higher version.
+   *
+   * @param config instance of {@link HoodieWriteConfig} to be used.
+   * @param jsc instance of {@link JavaSparkContext} to be used.
+   * @param instantTime current instant time that should not be touched.
+   */
+  void upgrade(HoodieWriteConfig config, JavaSparkContext jsc, String instantTime);
 }
