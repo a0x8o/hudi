@@ -16,25 +16,29 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.integ.testsuite.dag.nodes;
+package org.apache.hudi.utilities.schema;
 
-import org.apache.hudi.integ.testsuite.configuration.DeltaConfig.Config;
-import org.apache.hudi.integ.testsuite.dag.ExecutionContext;
+import java.io.Serializable;
+import java.util.HashSet;
+import org.apache.avro.Schema;
+import org.apache.avro.SchemaNormalization;
+
+import java.util.Set;
 
 /**
- * Represents a clean node in the DAG of operations for a workflow. Clean up any stale/old files/data lying around
- * (either on file storage or index storage) based on configurations and CleaningPolicy used.
+ * Tracks already processed schemas.
  */
-public class CleanNode extends DagNode<Boolean> {
+public class SchemaSet implements Serializable {
 
-  public CleanNode(Config config) {
-    this.config = config;
+  private final Set<Long> processedSchema = new HashSet<>();
+
+  public boolean isSchemaPresent(Schema schema) {
+    long schemaKey = SchemaNormalization.parsingFingerprint64(schema);
+    return processedSchema.contains(schemaKey);
   }
 
-  @Override
-  public void execute(ExecutionContext executionContext) throws Exception {
-    log.info("Executing clean node {}", this.getName());
-    executionContext.getHoodieTestSuiteWriter().getWriteClient(this).clean();
+  public void addSchema(Schema schema) {
+    long schemaKey = SchemaNormalization.parsingFingerprint64(schema);
+    processedSchema.add(schemaKey);
   }
-
 }
