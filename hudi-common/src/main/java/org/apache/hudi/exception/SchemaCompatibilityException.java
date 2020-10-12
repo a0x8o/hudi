@@ -18,33 +18,20 @@
 
 package org.apache.hudi.exception;
 
-import java.io.Serializable;
-
 /**
- * <p>
- * Exception thrown for Hoodie failures. The root of the exception hierarchy.
- * </p>
- * <p>
- * Hoodie Write/Read clients will throw this exception if any of its operations fail. This is a runtime (unchecked)
- * exception.
- * </p>
+ * An exception thrown when schema has compatibility problems.
  */
-public class HoodieException extends RuntimeException implements Serializable {
+public class SchemaCompatibilityException extends HoodieException {
 
-  public HoodieException() {
-    super();
-  }
-
-  public HoodieException(String message) {
+  public SchemaCompatibilityException(String message) {
     super(message);
   }
 
-  public HoodieException(String message, Throwable t) {
+  public SchemaCompatibilityException(String message, Throwable t) {
     super(message, t);
   }
 
-  public HoodieException(Throwable t) {
+  public SchemaCompatibilityException(Throwable t) {
     super(t);
   }
-
 }
