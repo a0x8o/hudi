@@ -403,6 +403,7 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
 
   private void deleteInvalidFilesByPartitions(HoodieEngineContext context, Map<String, List<Pair<String, String>>> invalidFilesByPartition) {
     // Now delete partially written files
+    context.setJobStatus(this.getClass().getSimpleName(), "Delete invalid files generated during the write operation");
     context.map(new ArrayList<>(invalidFilesByPartition.values()), partitionWithFileList -> {
       final FileSystem fileSystem = metaClient.getFs();
       LOG.info("Deleting invalid data files=" + partitionWithFileList);
@@ -460,7 +461,7 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
       if (!invalidDataPaths.isEmpty()) {
         LOG.info("Removing duplicate data files created due to spark retries before committing. Paths=" + invalidDataPaths);
         Map<String, List<Pair<String, String>>> invalidPathsByPartition = invalidDataPaths.stream()
-            .map(dp -> Pair.of(new Path(dp).getParent().toString(), new Path(basePath, dp).toString()))
+            .map(dp -> Pair.of(new Path(basePath, dp).getParent().toString(), new Path(basePath, dp).toString()))
             .collect(Collectors.groupingBy(Pair::getKey));
 
         // Ensure all files in delete list is actually present. This is mandatory for an eventually consistent FS.
