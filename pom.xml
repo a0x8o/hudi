@@ -106,7 +106,7 @@
     <prometheus.version>0.8.0</prometheus.version>
     <http.version>4.4.1</http.version>
     <spark.version>${spark2.version}</spark.version>
-    <flink.version>1.12.0</flink.version>
+    <flink.version>1.11.2</flink.version>
     <spark2.version>2.4.4</spark2.version>
     <spark3.version>3.0.0</spark3.version>
     <avro.version>1.8.2</avro.version>
@@ -128,6 +128,7 @@
     <skipUTs>${skipTests}</skipUTs>
     <skipFTs>${skipTests}</skipFTs>
     <skipITs>${skipTests}</skipITs>
+    <skip.hudi-spark2.unit.tests>${skipTests}</skip.hudi-spark2.unit.tests>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <main.basedir>${project.basedir}</main.basedir>
     <spark.bundle.hive.scope>provided</spark.bundle.hive.scope>
@@ -141,7 +142,6 @@
     <presto.bundle.bootstrap.scope>compile</presto.bundle.bootstrap.scope>
     <presto.bundle.bootstrap.shade.prefix>org.apache.hudi.</presto.bundle.bootstrap.shade.prefix>
     <shadeSources>true</shadeSources>
-    <skip.hudi-spark2.unit.tests>false</skip.hudi-spark2.unit.tests>
   </properties>
 
   <scm>
@@ -949,14 +949,6 @@
     <repository>
       <id>confluent</id>
       <url>https://packages.confluent.io/maven/</url>
-    </repository>
-    <repository>
-      <id>libs-milestone</id>
-      <url>https://repo.spring.io/libs-milestone/</url>
-    </repository>
-    <repository>
-      <id>libs-release</id>
-      <url>https://repo.spring.io/libs-release/</url>
     </repository>
   </repositories>
 
