@@ -30,6 +30,7 @@ import org.apache.hudi.operator.partitioner.BucketAssignFunction;
 import org.apache.hudi.operator.transform.RowDataToHoodieFunction;
 import org.apache.hudi.util.StreamerUtil;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -65,7 +66,7 @@ public class HoodieTableSink implements AppendStreamTableSink<RowData>, Partitio
   public DataStreamSink<?> consumeDataStream(DataStream<RowData> dataStream) {
     // Read from kafka source
     RowType rowType = (RowType) this.schema.toRowDataType().notNull().getLogicalType();
-    int numWriteTasks = this.conf.getInteger(FlinkOptions.WRITE_TASK_PARALLELISM);
+    int numWriteTasks = this.conf.getInteger(FlinkOptions.WRITE_TASKS);
     StreamWriteOperatorFactory<HoodieRecord> operatorFactory = new StreamWriteOperatorFactory<>(conf, isBounded);
 
     DataStream<Object> pipeline = dataStream
@@ -119,6 +120,11 @@ public class HoodieTableSink implements AppendStreamTableSink<RowData>, Partitio
   @Override
   public void setStaticPartition(Map<String, String> partitions) {
     // no operation
+  }
+
+  @VisibleForTesting
+  public Configuration getConf() {
+    return this.conf;
   }
 
   // Dummy sink function that does nothing.

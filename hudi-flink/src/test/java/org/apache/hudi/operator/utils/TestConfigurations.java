@@ -20,15 +20,19 @@ package org.apache.hudi.operator.utils;
 
 import org.apache.hudi.operator.FlinkOptions;
 import org.apache.hudi.streamer.FlinkStreamerConfig;
+import org.apache.hudi.utils.factory.CollectSinkTableFactory;
 import org.apache.hudi.utils.factory.ContinuousFileSourceFactory;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.types.Row;
 
 import java.util.Map;
 import java.util.Objects;
@@ -56,6 +60,13 @@ public class TestConfigurations {
           ROW_DATA_TYPE.getChildren().toArray(new DataType[0]))
       .build();
 
+  public static final TypeInformation<Row> ROW_TYPE_INFO = Types.ROW(
+      Types.STRING,
+      Types.STRING,
+      Types.INT,
+      Types.LOCAL_DATE_TIME,
+      Types.STRING);
+
   public static String getCreateHoodieTableDDL(String tableName, Map<String, String> options) {
     String createTable = "create table " + tableName + "(\n"
         + "  uuid varchar(20),\n"
@@ -77,8 +88,12 @@ public class TestConfigurations {
   }
 
   public static String getFileSourceDDL(String tableName) {
+    return getFileSourceDDL(tableName, "test_source.data");
+  }
+
+  public static String getFileSourceDDL(String tableName, String fileName) {
     String sourcePath = Objects.requireNonNull(Thread.currentThread()
-        .getContextClassLoader().getResource("test_source.data")).toString();
+        .getContextClassLoader().getResource(fileName)).toString();
     return "create table " + tableName + "(\n"
         + "  uuid varchar(20),\n"
         + "  name varchar(10),\n"
@@ -91,12 +106,24 @@ public class TestConfigurations {
         + ")";
   }
 
+  public static String getCollectSinkDDL(String tableName) {
+    return "create table " + tableName + "(\n"
+        + "  uuid varchar(20),\n"
+        + "  name varchar(10),\n"
+        + "  age int,\n"
+        + "  ts timestamp(3),\n"
+        + "  `partition` varchar(20)\n"
+        + ") with (\n"
+        + "  'connector' = '" + CollectSinkTableFactory.FACTORY_ID + "'"
+        + ")";
+  }
+
   public static final RowDataSerializer SERIALIZER = new RowDataSerializer(new ExecutionConfig(), ROW_TYPE);
 
   public static Configuration getDefaultConf(String tablePath) {
     Configuration conf = new Configuration();
     conf.setString(FlinkOptions.PATH, tablePath);
-    conf.setString(FlinkOptions.READ_SCHEMA_FILE_PATH,
+    conf.setString(FlinkOptions.READ_AVRO_SCHEMA_PATH,
         Objects.requireNonNull(Thread.currentThread()
             .getContextClassLoader().getResource("test_read_schema.avsc")).toString());
     conf.setString(FlinkOptions.TABLE_NAME, "TestHoodieTable");
