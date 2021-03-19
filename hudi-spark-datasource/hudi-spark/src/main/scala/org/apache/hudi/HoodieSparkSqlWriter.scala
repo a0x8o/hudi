@@ -221,6 +221,23 @@ private[hudi] object HoodieSparkSqlWriter {
       val (writeSuccessful, compactionInstant) =
         commitAndPerformPostOperations(writeResult, parameters, writeClient, tableConfig, jsc,
           TableInstantInfo(basePath, instantTime, commitActionType, operation))
+
+      def unpersistRdd(rdd: RDD[_]): Unit = {
+        if (sparkContext.getPersistentRDDs.contains(rdd.id)) {
+          try {
+            rdd.unpersist()
+          } catch {
+            case t: Exception => log.warn("Got excepting trying to unpersist rdd", t)
+          }
+        }
+        val parentRdds = rdd.dependencies.map(_.rdd)
+        parentRdds.foreach { parentRdd =>
+          unpersistRdd(parentRdd)
+        }
+      }
+      // it's safe to unpersist cached rdds here
+      unpersistRdd(writeResult.getWriteStatuses.rdd)
+
       (writeSuccessful, common.util.Option.ofNullable(instantTime), compactionInstant, writeClient, tableConfig)
     }
   }
@@ -505,8 +522,8 @@ private[hudi] object HoodieSparkSqlWriter {
   private def isAsyncCompactionEnabled(client: SparkRDDWriteClient[HoodieRecordPayload[Nothing]],
                                        tableConfig: HoodieTableConfig,
                                        parameters: Map[String, String], configuration: Configuration) : Boolean = {
-    log.info(s"Config.isInlineCompaction ? ${client.getConfig.isInlineCompaction}")
-    if (asyncCompactionTriggerFnDefined && !client.getConfig.isInlineCompaction
+    log.info(s"Config.inlineCompactionEnabled ? ${client.getConfig.inlineCompactionEnabled}")
+    if (asyncCompactionTriggerFnDefined && !client.getConfig.inlineCompactionEnabled
       && parameters.get(ASYNC_COMPACT_ENABLE_OPT_KEY).exists(r => r.toBoolean)) {
       tableConfig.getTableType == HoodieTableType.MERGE_ON_READ
     } else {
