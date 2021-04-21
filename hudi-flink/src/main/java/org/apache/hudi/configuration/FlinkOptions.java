@@ -80,6 +80,12 @@ public class FlinkOptions {
       .defaultValue(false)
       .withDescription("Whether to bootstrap the index state from existing hoodie table, default false");
 
+  public static final ConfigOption<Double> INDEX_STATE_TTL = ConfigOptions
+      .key("index.state.ttl")
+      .doubleType()
+      .defaultValue(1.5D)
+      .withDescription("Index state ttl in days, default 1.5 day");
+
   // ------------------------------------------------------------------------
   //  Read Options
   // ------------------------------------------------------------------------
@@ -239,9 +245,9 @@ public class FlinkOptions {
   public static final ConfigOption<String> PARTITION_PATH_FIELD = ConfigOptions
       .key(KeyGeneratorOptions.PARTITIONPATH_FIELD_OPT_KEY)
       .stringType()
-      .defaultValue("partition-path")
+      .defaultValue("")
       .withDescription("Partition path field. Value to be used at the `partitionPath` component of `HoodieKey`.\n"
-          + "Actual value obtained by invoking .toString()");
+          + "Actual value obtained by invoking .toString(), default ''");
 
   public static final ConfigOption<Boolean> PARTITION_PATH_URL_ENCODE = ConfigOptions
       .key("write.partition.url_encode")
