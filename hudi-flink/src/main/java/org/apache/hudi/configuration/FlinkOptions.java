@@ -267,17 +267,29 @@ public class FlinkOptions {
       .defaultValue(4)
       .withDescription("Parallelism of tasks that do actual write, default is 4");
 
-  public static final ConfigOption<Double> WRITE_BATCH_SIZE = ConfigOptions
-      .key("write.batch.size.MB")
+  public static final ConfigOption<Double> WRITE_BUFFER_SIZE = ConfigOptions
+      .key("write.buffer.size.MB")
+      .doubleType()
+      .defaultValue(256D) // 256MB
+      .withDescription("Total buffer size in MB to flush data into the underneath filesystem, default 256MB");
+
+  public static final ConfigOption<Double> WRITE_BUCKET_SIZE = ConfigOptions
+      .key("write.bucket.size.MB")
       .doubleType()
       .defaultValue(64D) // 64MB
-      .withDescription("Batch buffer size in MB to flush data into the underneath filesystem, default 64MB");
+      .withDescription("Bucket size in MB to flush data into the underneath filesystem, default 64MB");
 
   public static final ConfigOption<Integer> WRITE_LOG_BLOCK_SIZE = ConfigOptions
       .key("write.log_block.size.MB")
       .intType()
       .defaultValue(128)
       .withDescription("Max log block size in MB for log file, default 128MB");
+
+  public static final ConfigOption<Integer> WRITE_LOG_MAX_SIZE = ConfigOptions
+      .key("write.log.max.size")
+      .intType()
+      .defaultValue(1024)
+      .withDescription("Maximum size allowed in MB for a log file before it is rolled over to the next version, default 1GB");
 
   public static final ConfigOption<Integer> WRITE_MERGE_MAX_MEMORY = ConfigOptions
       .key("write.merge.max_memory")
@@ -345,6 +357,18 @@ public class FlinkOptions {
       .defaultValue(10)// default 10 commits
       .withDescription("Number of commits to retain. So data will be retained for num_of_commits * time_between_commits (scheduled).\n"
           + "This also directly translates into how much you can incrementally pull on this table, default 10");
+
+  public static final ConfigOption<Integer> ARCHIVE_MAX_COMMITS = ConfigOptions
+      .key("archive.max_commits")
+      .intType()
+      .defaultValue(30)// default max 30 commits
+      .withDescription("Max number of commits to keep before archiving older commits into a sequential log, default 30");
+
+  public static final ConfigOption<Integer> ARCHIVE_MIN_COMMITS = ConfigOptions
+      .key("archive.min_commits")
+      .intType()
+      .defaultValue(20)// default min 20 commits
+      .withDescription("Min number of commits to keep before archiving older commits into a sequential log, default 20");
 
   // ------------------------------------------------------------------------
   //  Hive Sync Options
