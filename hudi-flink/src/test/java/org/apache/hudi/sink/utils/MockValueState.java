@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,11 +16,30 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.common.model;
+package org.apache.hudi.sink.utils;
+
+import org.apache.flink.api.common.state.ValueState;
 
 /**
- * The supported action types.
+ * Mock value state for testing.
+ *
+ * @param <V> Type of state value
  */
-public enum ActionType {
-  commit, savepoint, compaction, clean, rollback, replacecommit, deltacommit
+public class MockValueState<V> implements ValueState<V> {
+  private V v = null;
+
+  @Override
+  public V value() {
+    return v;
+  }
+
+  @Override
+  public void update(V value) {
+    this.v = value;
+  }
+
+  @Override
+  public void clear() {
+    v = null;
+  }
 }
