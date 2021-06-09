@@ -37,7 +37,7 @@ import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.execution.bulkinsert.BulkInsertSortMode;
 import org.apache.hudi.index.HoodieIndex;
-import org.apache.hudi.keygen.SimpleAvroKeyGenerator;
+import org.apache.hudi.keygen.constant.KeyGeneratorType;
 import org.apache.hudi.metrics.MetricsReporterType;
 import org.apache.hudi.metrics.datadog.DatadogHttpClient.ApiSite;
 import org.apache.hudi.table.action.compact.CompactionTriggerStrategy;
@@ -72,8 +72,11 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   public static final String PRECOMBINE_FIELD_PROP = "hoodie.datasource.write.precombine.field";
   public static final String WRITE_PAYLOAD_CLASS = "hoodie.datasource.write.payload.class";
   public static final String DEFAULT_WRITE_PAYLOAD_CLASS = OverwriteWithLatestAvroPayload.class.getName();
+
   public static final String KEYGENERATOR_CLASS_PROP = "hoodie.datasource.write.keygenerator.class";
-  public static final String DEFAULT_KEYGENERATOR_CLASS = SimpleAvroKeyGenerator.class.getName();
+  public static final String KEYGENERATOR_TYPE_PROP = "hoodie.datasource.write.keygenerator.type";
+  public static final String DEFAULT_KEYGENERATOR_TYPE = KeyGeneratorType.SIMPLE.name();
+
   public static final String DEFAULT_ROLLBACK_USING_MARKERS = "false";
   public static final String ROLLBACK_USING_MARKERS = "hoodie.rollback.using.markers";
   public static final String TIMELINE_LAYOUT_VERSION = "hoodie.timeline.layout.version";
@@ -165,6 +168,15 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   public static final String DEFAULT_WRITE_META_KEY_PREFIXES = "";
 
   /**
+   * The specified write schema. In most case, we do not need set this parameter,
+   * but for the case the write schema is not equal to the specified table schema, we can
+   * specify the write schema by this parameter.
+   *
+   * Currently the MergeIntoHoodieTableCommand use this to specify the write schema.
+   */
+  public static final String WRITE_SCHEMA_PROP = "hoodie.write.schema";
+
+  /**
    * HUDI-858 : There are users who had been directly using RDD APIs and have relied on a behavior in 0.4.x to allow
    * multiple write operations (upsert/buk-insert/...) to be executed within a single commit.
    * <p>
@@ -228,6 +240,20 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
 
   public void setSchema(String schemaStr) {
     props.setProperty(AVRO_SCHEMA, schemaStr);
+  }
+
+  /**
+   * Get the write schema for written records.
+   *
+   * If the WRITE_SCHEMA has specified, we use the WRITE_SCHEMA.
+   * Or else we use the AVRO_SCHEMA as the write schema.
+   * @return
+   */
+  public String getWriteSchema() {
+    if (props.containsKey(WRITE_SCHEMA_PROP)) {
+      return props.getProperty(WRITE_SCHEMA_PROP);
+    }
+    return getSchema();
   }
 
   public boolean getAvroSchemaValidate() {
@@ -1347,8 +1373,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
 
       setDefaultOnCondition(props, !props.containsKey(ROLLBACK_PARALLELISM), ROLLBACK_PARALLELISM,
           DEFAULT_ROLLBACK_PARALLELISM);
-      setDefaultOnCondition(props, !props.containsKey(KEYGENERATOR_CLASS_PROP),
-          KEYGENERATOR_CLASS_PROP, DEFAULT_KEYGENERATOR_CLASS);
+      setDefaultOnCondition(props, !props.containsKey(KEYGENERATOR_TYPE_PROP),
+          KEYGENERATOR_TYPE_PROP, DEFAULT_KEYGENERATOR_TYPE);
       setDefaultOnCondition(props, !props.containsKey(WRITE_PAYLOAD_CLASS),
           WRITE_PAYLOAD_CLASS, DEFAULT_WRITE_PAYLOAD_CLASS);
       setDefaultOnCondition(props, !props.containsKey(ROLLBACK_USING_MARKERS), ROLLBACK_USING_MARKERS,

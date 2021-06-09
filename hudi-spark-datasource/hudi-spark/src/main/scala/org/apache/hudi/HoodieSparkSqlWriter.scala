@@ -19,7 +19,7 @@ package org.apache.hudi
 
 import java.util
 import java.util.Properties
-import org.apache.avro.Schema
+
 import org.apache.avro.generic.GenericRecord
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -45,6 +45,7 @@ import org.apache.spark.SPARK_VERSION
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.hudi.HoodieSqlUtils
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.StaticSQLConf.SCHEMA_STRING_LENGTH_THRESHOLD
 import org.apache.spark.sql.types.StructType
@@ -52,9 +53,10 @@ import org.apache.spark.sql.{DataFrame, SQLContext, SaveMode, SparkSession}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
-import org.apache.hudi.common.table.HoodieTableConfig.{DEFAULT_ARCHIVELOG_FOLDER, HOODIE_ARCHIVELOG_FOLDER_PROP_NAME}
+import org.apache.hudi.common.table.HoodieTableConfig.{DEFAULT_ARCHIVELOG_FOLDER}
+import org.apache.hudi.keygen.factory.HoodieSparkKeyGeneratorFactory
 
-private[hudi] object HoodieSparkSqlWriter {
+object HoodieSparkSqlWriter {
 
   private val log = LogManager.getLogger(getClass)
   private var tableExists: Boolean = false
@@ -104,7 +106,7 @@ private[hudi] object HoodieSparkSqlWriter {
     val fs = basePath.getFileSystem(sparkContext.hadoopConfiguration)
     tableExists = fs.exists(new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME))
     var tableConfig = getHoodieTableConfig(sparkContext, path.get, hoodieTableConfigOpt)
-    val keyGenerator = DataSourceUtils.createKeyGenerator(toProperties(parameters))
+    val keyGenerator = HoodieSparkKeyGeneratorFactory.createKeyGenerator(toProperties(parameters))
 
     if (mode == SaveMode.Ignore && tableExists) {
       log.warn(s"hoodie table at $basePath already exists. Ignoring & not performing actual writes.")
@@ -450,11 +452,13 @@ private[hudi] object HoodieSparkSqlWriter {
     // The following code refers to the spark code in
     // https://github.com/apache/spark/blob/master/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveExternalCatalog.scala
 
+    // Sync schema with meta fields
+    val schemaWithMetaFields = HoodieSqlUtils.addMetaFields(schema)
     val partitionSet = parameters(HIVE_PARTITION_FIELDS_OPT_KEY)
       .split(",").map(_.trim).filter(!_.isEmpty).toSet
     val threshold = sqlConf.getConf(SCHEMA_STRING_LENGTH_THRESHOLD)
 
-    val (partitionCols, dataCols) = schema.partition(c => partitionSet.contains(c.name))
+    val (partitionCols, dataCols) = schemaWithMetaFields.partition(c => partitionSet.contains(c.name))
     val reOrderedType = StructType(dataCols ++ partitionCols)
     val schemaParts = reOrderedType.json.grouped(threshold).toSeq
 
