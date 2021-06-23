@@ -66,17 +66,24 @@ public class HoodieFlinkCompactor {
     // set table schema
     CompactionUtil.setAvroSchema(conf, metaClient);
 
+    HoodieFlinkWriteClient writeClient = StreamerUtil.createWriteClient(conf, null);
+    HoodieFlinkTable<?> table = writeClient.getHoodieTable();
+
+    // rolls back inflight compaction first
+    // condition: the schedule compaction is in INFLIGHT state for max delta seconds.
+    CompactionUtil.rollbackCompaction(table, conf);
+
     // judge whether have operation
     // to compute the compaction instant time and do compaction.
     String compactionInstantTime = CompactionUtil.getCompactionInstantTime(metaClient);
-    HoodieFlinkWriteClient writeClient = StreamerUtil.createWriteClient(conf, null);
     boolean scheduled = writeClient.scheduleCompactionAtInstant(compactionInstantTime, Option.empty());
     if (!scheduled) {
       // do nothing.
       LOG.info("No compaction plan for this job ");
       return;
     }
-    HoodieFlinkTable<?> table = writeClient.getHoodieTable();
+
+    table.getMetaClient().reloadActiveTimeline();
     // generate compaction plan
     // should support configurable commit metadata
     HoodieCompactionPlan compactionPlan = CompactionUtils.getCompactionPlan(
