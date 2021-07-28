@@ -312,6 +312,12 @@ public class FlinkOptions extends HoodieConfig {
       .withDescription("Maximum memory in MB for a write task, when the threshold hits,\n"
           + "it flushes the max size data bucket to avoid OOM, default 1GB");
 
+  public static final ConfigOption<Long> WRITE_RATE_LIMIT = ConfigOptions
+      .key("write.rate.limit")
+      .longType()
+      .defaultValue(0L) // default no limit
+      .withDescription("Write record rate limit per second to prevent traffic jitter and improve stability, default 0 (no limit)");
+
   public static final ConfigOption<Double> WRITE_BATCH_SIZE = ConfigOptions
       .key("write.batch.size")
       .doubleType()
@@ -471,6 +477,12 @@ public class FlinkOptions extends HoodieConfig {
       .stringType()
       .defaultValue("PARQUET")
       .withDescription("File format for hive sync, default 'PARQUET'");
+
+  public static final ConfigOption<String> HIVE_SYNC_MODE = ConfigOptions
+      .key("hive_sync.mode")
+      .stringType()
+      .defaultValue("jdbc")
+      .withDescription("Mode to choose for Hive ops. Valid values are hms, jdbc and hiveql, default 'jdbc'");
 
   public static final ConfigOption<String> HIVE_SYNC_USERNAME = ConfigOptions
       .key("hive_sync.username")
