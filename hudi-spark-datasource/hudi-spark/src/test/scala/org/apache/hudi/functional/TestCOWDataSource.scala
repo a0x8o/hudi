@@ -574,7 +574,7 @@ class TestCOWDataSource extends HoodieClientTestBase {
       fail("should fail when invalid PartitionKeyType is provided!")
     } catch {
       case e: Exception =>
-        assertTrue(e.getMessage.contains("No enum constant org.apache.hudi.keygen.CustomAvroKeyGenerator.PartitionKeyType.DUMMY"))
+        assertTrue(e.getCause.getMessage.contains("No enum constant org.apache.hudi.keygen.CustomAvroKeyGenerator.PartitionKeyType.DUMMY"))
     }
   }
 
@@ -770,7 +770,6 @@ class TestCOWDataSource extends HoodieClientTestBase {
     }
   }
 
-
   @Test def testSchemaNotEqualData(): Unit = {
     val  opts = commonOpts ++ Map("hoodie.avro.schema.validate" -> "true")
     val schema1 = StructType(StructField("_row_key", StringType, true) :: StructField("name", StringType, true)::
@@ -785,7 +784,6 @@ class TestCOWDataSource extends HoodieClientTestBase {
       .options(opts)
       .mode(SaveMode.Append)
       .save(basePath)
-
     val recordsReadDF = spark.read.format("org.apache.hudi")
       .load(basePath + "/*/*")
 
