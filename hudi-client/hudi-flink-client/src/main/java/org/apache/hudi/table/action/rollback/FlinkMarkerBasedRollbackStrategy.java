@@ -32,7 +32,8 @@ import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieRollbackException;
 import org.apache.hudi.table.HoodieTable;
-import org.apache.hudi.table.MarkerFiles;
+import org.apache.hudi.table.marker.MarkerBasedRollbackUtils;
+import org.apache.hudi.table.marker.WriteMarkers;
 
 import org.apache.hadoop.fs.FileStatus;
 
@@ -52,17 +53,18 @@ public class FlinkMarkerBasedRollbackStrategy<T extends HoodieRecordPayload> ext
   @Override
   public List<HoodieRollbackStat> execute(HoodieInstant instantToRollback) {
     try {
-      MarkerFiles markerFiles = new MarkerFiles(table, instantToRollback.getTimestamp());
-      List<HoodieRollbackStat> rollbackStats = context.map(markerFiles.allMarkerFilePaths(), markerFilePath -> {
+      List<String> markerPaths = MarkerBasedRollbackUtils.getAllMarkerPaths(
+          table, context, instantToRollback.getTimestamp(), config.getRollbackParallelism());
+      List<HoodieRollbackStat> rollbackStats = context.map(markerPaths, markerFilePath -> {
         String typeStr = markerFilePath.substring(markerFilePath.lastIndexOf(".") + 1);
         IOType type = IOType.valueOf(typeStr);
         switch (type) {
           case MERGE:
-            return undoMerge(MarkerFiles.stripMarkerSuffix(markerFilePath));
+            return undoMerge(WriteMarkers.stripMarkerSuffix(markerFilePath));
           case APPEND:
-            return undoAppend(MarkerFiles.stripMarkerSuffix(markerFilePath), instantToRollback);
+            return undoAppend(WriteMarkers.stripMarkerSuffix(markerFilePath), instantToRollback);
           case CREATE:
-            return undoCreate(MarkerFiles.stripMarkerSuffix(markerFilePath));
+            return undoCreate(WriteMarkers.stripMarkerSuffix(markerFilePath));
           default:
             throw new HoodieRollbackException("Unknown marker type, during rollback of " + instantToRollback);
         }

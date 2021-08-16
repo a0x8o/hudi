@@ -31,6 +31,7 @@ import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieDefaultTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
@@ -115,6 +116,10 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
         this.metaClient = null;
         this.tableConfig = null;
       }
+
+      if (enabled) {
+        openTimelineScanner(metaClient.getActiveTimeline());
+      }
     }
   }
 
@@ -133,11 +138,9 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
         Option<GenericRecord> baseRecord = baseFileReader.getRecordByKey(key);
         if (baseRecord.isPresent()) {
           hoodieRecord = tableConfig.populateMetaFields()
-              ? SpillableMapUtils.convertToHoodieRecordPayload(baseRecord.get(), tableConfig.getPayloadClass(), false)
-              : SpillableMapUtils.convertToHoodieRecordPayload(
-                  baseRecord.get(),
-                  tableConfig.getPayloadClass(),
-                  Pair.of(tableConfig.getRecordKeyFieldProp(), tableConfig.getPartitionFieldProp()), false);
+              ? SpillableMapUtils.convertToHoodieRecordPayload(baseRecord.get(), tableConfig.getPayloadClass(), tableConfig.getPreCombineField(), false)
+              : SpillableMapUtils.convertToHoodieRecordPayload(baseRecord.get(), tableConfig.getPayloadClass(), tableConfig.getPreCombineField(),
+              Pair.of(tableConfig.getRecordKeyFieldProp(), tableConfig.getPartitionFieldProp()), false);
           metrics.ifPresent(m -> m.updateMetrics(HoodieMetadataMetrics.BASEFILE_READ_STR, readTimer.endTimer()));
         }
       }
@@ -275,6 +278,20 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
   }
 
   /**
+   * Return the timestamp of the latest synced instant.
+   */
+  @Override
+  public Option<String> getUpdateTime() {
+    if (!enabled) {
+      return Option.empty();
+    }
+
+    HoodieActiveTimeline timeline = metaClient.reloadActiveTimeline();
+    return timeline.getDeltaCommitTimeline().filterCompletedInstants()
+        .lastInstant().map(HoodieInstant::getTimestamp);
+  }
+
+  /**
    * Return an ordered list of instants which have not been synced to the Metadata Table.
    */
   @Override
@@ -301,9 +318,11 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
       return Collections.EMPTY_LIST;
     }
 
-    // All instants on the data timeline, which are greater than the last instant on metadata timeline
-    // are candidates for sync.
-    String latestMetadataInstantTime = metaClient.getActiveTimeline().filterCompletedInstants().lastInstant().get().getTimestamp();
+    // All instants on the data timeline, which are greater than the last deltacommit instant on metadata timeline
+    // are candidates for sync. We only consider delta-commit instants as each actions on dataset leads to a
+    // deltacommit on the metadata table.
+    String latestMetadataInstantTime = metaClient.getActiveTimeline().getDeltaCommitTimeline().filterCompletedInstants()
+        .lastInstant().get().getTimestamp();
     HoodieDefaultTimeline candidateTimeline = datasetMetaClient.getActiveTimeline().findInstantsAfter(latestMetadataInstantTime, Integer.MAX_VALUE);
     Option<HoodieInstant> earliestIncompleteInstant = ignoreIncompleteInstants ? Option.empty()
         : candidateTimeline.filterInflightsAndRequested().firstInstant();

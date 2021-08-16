@@ -40,8 +40,6 @@ import org.apache.spark.sql.execution.datasources.{DataSourceUtils => SparkDataS
   */
 object DataSourceReadOptions {
 
-  private val log = LogManager.getLogger(DataSourceReadOptions.getClass)
-
   val QUERY_TYPE_SNAPSHOT_OPT_VAL = "snapshot"
   val QUERY_TYPE_READ_OPTIMIZED_OPT_VAL = "read_optimized"
   val QUERY_TYPE_INCREMENTAL_OPT_VAL = "incremental"
@@ -67,24 +65,13 @@ object DataSourceReadOptions {
     .noDefaultValue()
     .withDocumentation("Comma separated list of file paths to read within a Hudi table.")
 
-  val READ_PRE_COMBINE_FIELD = HoodieWriteConfig.PRECOMBINE_FIELD_PROP
+  val READ_PRE_COMBINE_FIELD = HoodieWriteConfig.PRECOMBINE_FIELD
 
   val ENABLE_HOODIE_FILE_INDEX: ConfigProperty[Boolean] = ConfigProperty
     .key("hoodie.file.index.enable")
     .defaultValue(true)
     .withDocumentation("Enables use of the spark file index implementation for Hudi, "
       + "that speeds up listing of large tables.")
-
-  @Deprecated
-  val VIEW_TYPE_OPT_KEY = "hoodie.datasource.view.type"
-  @Deprecated
-  val VIEW_TYPE_READ_OPTIMIZED_OPT_VAL = "read_optimized"
-  @Deprecated
-  val VIEW_TYPE_INCREMENTAL_OPT_VAL = "incremental"
-  @Deprecated
-  val VIEW_TYPE_REALTIME_OPT_VAL = "realtime"
-  @Deprecated
-  val DEFAULT_VIEW_TYPE_OPT_VAL = VIEW_TYPE_READ_OPTIMIZED_OPT_VAL
 
   val BEGIN_INSTANTTIME: ConfigProperty[String] = ConfigProperty
     .key("hoodie.datasource.read.begin.instanttime")
@@ -123,13 +110,62 @@ object DataSourceReadOptions {
     .withDocumentation("The query instant for time travel. Without specified this option," +
       " we query the latest snapshot.")
 
+  /** @deprecated Use {@link QUERY_TYPE} and its methods instead */
+  @Deprecated
+  val QUERY_TYPE_OPT_KEY = QUERY_TYPE.key()
+  /** @deprecated Use {@link QUERY_TYPE} and its methods instead */
+  @Deprecated
+  val DEFAULT_QUERY_TYPE_OPT_VAL: String = QUERY_TYPE_SNAPSHOT_OPT_VAL
+  /** @deprecated Use {@link REALTIME_MERGE} and its methods instead */
+  @Deprecated
+  val REALTIME_MERGE_OPT_KEY = REALTIME_MERGE.key()
+  /** @deprecated Use {@link REALTIME_MERGE} and its methods instead */
+  @Deprecated
+  val DEFAULT_REALTIME_MERGE_OPT_VAL = REALTIME_PAYLOAD_COMBINE_OPT_VAL
+  /** @deprecated Use {@link READ_PATHS} and its methods instead */
+  @Deprecated
+  val READ_PATHS_OPT_KEY = READ_PATHS.key()
+  /** @deprecated Use {@link QUERY_TYPE} and its methods instead */
+  @Deprecated
+  val VIEW_TYPE_OPT_KEY = "hoodie.datasource.view.type"
+  @Deprecated
+  val VIEW_TYPE_READ_OPTIMIZED_OPT_VAL = "read_optimized"
+  @Deprecated
+  val VIEW_TYPE_INCREMENTAL_OPT_VAL = "incremental"
+  @Deprecated
+  val VIEW_TYPE_REALTIME_OPT_VAL = "realtime"
+  @Deprecated
+  val DEFAULT_VIEW_TYPE_OPT_VAL = VIEW_TYPE_READ_OPTIMIZED_OPT_VAL
+  /** @deprecated Use {@link BEGIN_INSTANTTIME} and its methods instead */
+  @Deprecated
+  val BEGIN_INSTANTTIME_OPT_KEY = BEGIN_INSTANTTIME.key()
+  /** @deprecated Use {@link END_INSTANTTIME} and its methods instead */
+  @Deprecated
+  val END_INSTANTTIME_OPT_KEY = END_INSTANTTIME.key()
+  /** @deprecated Use {@link INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME} and its methods instead */
+  @Deprecated
+  val INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME_OPT_KEY = INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME.key()
+  /** @deprecated Use {@link INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME} and its methods instead */
+  @Deprecated
+  val DEFAULT_INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME_OPT_VAL = INCREMENTAL_READ_SCHEMA_USE_END_INSTANTTIME.defaultValue()
+  /** @deprecated Use {@link PUSH_DOWN_INCR_FILTERS} and its methods instead */
+  @Deprecated
+  val PUSH_DOWN_INCR_FILTERS_OPT_KEY = PUSH_DOWN_INCR_FILTERS.key()
+  /** @deprecated Use {@link PUSH_DOWN_INCR_FILTERS} and its methods instead */
+  @Deprecated
+  val DEFAULT_PUSH_DOWN_FILTERS_OPT_VAL = PUSH_DOWN_INCR_FILTERS.defaultValue()
+  /** @deprecated Use {@link INCR_PATH_GLOB} and its methods instead */
+  @Deprecated
+  val INCR_PATH_GLOB_OPT_KEY = INCR_PATH_GLOB.key()
+  /** @deprecated Use {@link INCR_PATH_GLOB} and its methods instead */
+  @Deprecated
+  val DEFAULT_INCR_PATH_GLOB_OPT_VAL = INCR_PATH_GLOB.defaultValue()
 }
 
 /**
   * Options supported for writing hoodie tables.
   */
 object DataSourceWriteOptions {
-  private val log = LogManager.getLogger(DataSourceWriteOptions.getClass)
 
   val BULK_INSERT_OPERATION_OPT_VAL = WriteOperationType.BULK_INSERT.value
   val INSERT_OPERATION_OPT_VAL = WriteOperationType.INSERT.value
@@ -145,6 +181,7 @@ object DataSourceWriteOptions {
       "Use bulkinsert to load new data into a table, and there on use upsert/insert. " +
       "bulk insert uses a disk based write path to scale to load large inputs without need to cache it.")
 
+
   val COW_TABLE_TYPE_OPT_VAL = HoodieTableType.COPY_ON_WRITE.name
   val MOR_TABLE_TYPE_OPT_VAL = HoodieTableType.MERGE_ON_READ.name
   val TABLE_TYPE: ConfigProperty[String] = ConfigProperty
@@ -152,15 +189,6 @@ object DataSourceWriteOptions {
     .defaultValue(COW_TABLE_TYPE_OPT_VAL)
     .withAlternatives("hoodie.datasource.write.storage.type")
     .withDocumentation("The table type for the underlying data, for this write. This can’t change between writes.")
-
-  @Deprecated
-  val STORAGE_TYPE_OPT = "hoodie.datasource.write.storage.type"
-  @Deprecated
-  val COW_STORAGE_TYPE_OPT_VAL = HoodieTableType.COPY_ON_WRITE.name
-  @Deprecated
-  val MOR_STORAGE_TYPE_OPT_VAL = HoodieTableType.MERGE_ON_READ.name
-  @Deprecated
-  val DEFAULT_STORAGE_TYPE_OPT_VAL = COW_STORAGE_TYPE_OPT_VAL
 
   /**
     * Translate spark parameters to hudi parameters
@@ -205,61 +233,53 @@ object DataSourceWriteOptions {
     .withDocumentation("Table name for the datasource write. Also used to register the table into meta stores.")
 
   /**
-    * Field used in preCombining before actual write. When two records have the same
-    * key value, we will pick the one with the largest value for the precombine field,
-    * determined by Object.compareTo(..)
-    */
-  val PRECOMBINE_FIELD = HoodieWriteConfig.PRECOMBINE_FIELD_PROP
+   * Field used in preCombining before actual write. When two records have the same
+   * key value, we will pick the one with the largest value for the precombine field,
+   * determined by Object.compareTo(..)
+   */
+  val PRECOMBINE_FIELD = HoodieWriteConfig.PRECOMBINE_FIELD
 
   /**
-    * Payload class used. Override this, if you like to roll your own merge logic, when upserting/inserting.
-    * This will render any value set for `PRECOMBINE_FIELD_OPT_VAL` in-effective
-    */
+   * Payload class used. Override this, if you like to roll your own merge logic, when upserting/inserting.
+   * This will render any value set for `PRECOMBINE_FIELD_OPT_VAL` in-effective
+   */
   val PAYLOAD_CLASS = HoodieWriteConfig.WRITE_PAYLOAD_CLASS
 
   /**
-    * Record key field. Value to be used as the `recordKey` component of `HoodieKey`. Actual value
-    * will be obtained by invoking .toString() on the field value. Nested fields can be specified using
-    * the dot notation eg: `a.b.c`
-    *
-    */
+   * Record key field. Value to be used as the `recordKey` component of `HoodieKey`. Actual value
+   * will be obtained by invoking .toString() on the field value. Nested fields can be specified using
+   * the dot notation eg: `a.b.c`
+   *
+   */
   val RECORDKEY_FIELD = KeyGeneratorOptions.RECORDKEY_FIELD
 
   /**
-    * Partition path field. Value to be used at the `partitionPath` component of `HoodieKey`. Actual
-    * value obtained by invoking .toString()
-    */
+   * Partition path field. Value to be used at the `partitionPath` component of `HoodieKey`. Actual
+   * value obtained by invoking .toString()
+   */
   val PARTITIONPATH_FIELD = KeyGeneratorOptions.PARTITIONPATH_FIELD
 
   /**
-    * Flag to indicate whether to use Hive style partitioning.
-    * If set true, the names of partition folders follow <partition_column_name>=<partition_value> format.
-    * By default false (the names of partition folders are only partition values)
-    */
-  val HIVE_STYLE_PARTITIONING = KeyGeneratorOptions.HIVE_STYLE_PARTITIONING
-  val URL_ENCODE_PARTITIONING = KeyGeneratorOptions.URL_ENCODE_PARTITIONING
-
-  /**
-    * Key generator class, that implements will extract the key out of incoming record
-    *
-    */
-  val KEYGENERATOR_CLASS = HoodieWriteConfig.KEYGENERATOR_CLASS_PROP
-  val DEFAULT_KEYGENERATOR_CLASS_OPT_VAL = classOf[SimpleKeyGenerator].getName
-
-  /**
-   *
-   * By default, false (will be enabled as default in a future release)
+   * Flag to indicate whether to use Hive style partitioning.
+   * If set true, the names of partition folders follow <partition_column_name>=<partition_value> format.
+   * By default false (the names of partition folders are only partition values)
    */
+  val HIVE_STYLE_PARTITIONING = KeyGeneratorOptions.HIVE_STYLE_PARTITIONING
+
+  val KEYGENERATOR_CLASS = ConfigProperty.key("hoodie.datasource.write.keygenerator.class")
+    .defaultValue(classOf[SimpleKeyGenerator].getName)
+    .withDocumentation("Key generator class, that implements `org.apache.hudi.keygen.KeyGenerator`")
+
   val ENABLE_ROW_WRITER: ConfigProperty[String] = ConfigProperty
     .key("hoodie.datasource.write.row.writer.enable")
-    .defaultValue("false")
+    .defaultValue("true")
     .withDocumentation("When set to true, will perform write operations directly using the spark native " +
       "`Row` representation, avoiding any additional conversion costs.")
 
   /**
    * Enable the bulk insert for sql insert statement.
    */
-  val SQL_ENABLE_BULK_INSERT:ConfigProperty[String] = ConfigProperty
+  val SQL_ENABLE_BULK_INSERT: ConfigProperty[String] = ConfigProperty
     .key("hoodie.sql.bulk.insert.enable")
     .defaultValue("false")
     .withDocumentation("When set to true, the sql insert statement will use bulk insert.")
@@ -283,6 +303,11 @@ object DataSourceWriteOptions {
     .defaultValue("false")
     .withDocumentation("If set to true, filters out all duplicate records from incoming dataframe, during insert operations.")
 
+  val PARTITIONS_TO_DELETE: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.write.partitions.to.delete")
+    .noDefaultValue()
+    .withDocumentation("Comma separated list of partitions to delete")
+
   val STREAMING_RETRY_CNT: ConfigProperty[String] = ConfigProperty
     .key("hoodie.datasource.write.streaming.retry.count")
     .defaultValue("3")
@@ -294,7 +319,6 @@ object DataSourceWriteOptions {
     .withDocumentation(" Config to indicate how long (by millisecond) before a retry should issued for failed microbatch")
 
   /**
-   *
    * By default true (in favor of streaming progressing over data integrity)
    */
   val STREAMING_IGNORE_FAILED_BATCH: ConfigProperty[String] = ConfigProperty
@@ -378,7 +402,7 @@ object DataSourceWriteOptions {
     .defaultValue("false")
     .withDocumentation("")
 
-  // We should use HIVE_SYNC_MODE instead of this config from 0.9.0
+  /* @deprecated We should use {@link HIVE_SYNC_MODE} instead of this config from 0.9.0 */
   @Deprecated
   val HIVE_USE_JDBC: ConfigProperty[String] = ConfigProperty
     .key("hoodie.datasource.hive_sync.use_jdbc")
@@ -461,6 +485,233 @@ object DataSourceWriteOptions {
     .defaultValue("io.confluent.kafka.serializers.KafkaAvroDeserializer")
     .sinceVersion("0.9.0")
     .withDocumentation("This class is used by kafka client to deserialize the records")
+
+  val DROP_PARTITION_COLUMNS: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.write.drop.partition.columns")
+    .defaultValue("false")
+    .withDocumentation("When set to true, will not write the partition columns into hudi. " +
+      "By default, false.")
+
+  /** @deprecated Use {@link HIVE_ASSUME_DATE_PARTITION} and its methods instead */
+  @Deprecated
+  val HIVE_ASSUME_DATE_PARTITION_OPT_KEY = HIVE_ASSUME_DATE_PARTITION.key()
+  /** @deprecated Use {@link HIVE_USE_PRE_APACHE_INPUT_FORMAT} and its methods instead */
+  @Deprecated
+  val HIVE_USE_PRE_APACHE_INPUT_FORMAT_OPT_KEY = HIVE_USE_PRE_APACHE_INPUT_FORMAT.key()
+  /** @deprecated Use {@link HIVE_USE_JDBC} and its methods instead */
+  @Deprecated
+  val HIVE_USE_JDBC_OPT_KEY = HIVE_USE_JDBC.key()
+  /** @deprecated Use {@link HIVE_AUTO_CREATE_DATABASE} and its methods instead */
+  @Deprecated
+  val HIVE_AUTO_CREATE_DATABASE_OPT_KEY = HIVE_AUTO_CREATE_DATABASE.key()
+  /** @deprecated Use {@link HIVE_IGNORE_EXCEPTIONS} and its methods instead */
+  @Deprecated
+  val HIVE_IGNORE_EXCEPTIONS_OPT_KEY = HIVE_IGNORE_EXCEPTIONS.key()
+  /** @deprecated Use {@link STREAMING_IGNORE_FAILED_BATCH} and its methods instead */
+  @Deprecated
+  val STREAMING_IGNORE_FAILED_BATCH_OPT_KEY = STREAMING_IGNORE_FAILED_BATCH.key()
+  /** @deprecated Use {@link STREAMING_IGNORE_FAILED_BATCH} and its methods instead */
+  @Deprecated
+  val DEFAULT_STREAMING_IGNORE_FAILED_BATCH_OPT_VAL = STREAMING_IGNORE_FAILED_BATCH.defaultValue()
+  /** @deprecated Use {@link META_SYNC_CLIENT_TOOL_CLASS} and its methods instead */
+  @Deprecated
+  val DEFAULT_META_SYNC_CLIENT_TOOL_CLASS = META_SYNC_CLIENT_TOOL_CLASS.defaultValue()
+  /** @deprecated Use {@link HIVE_SYNC_ENABLED} and its methods instead */
+  @Deprecated
+  val HIVE_SYNC_ENABLED_OPT_KEY = HIVE_SYNC_ENABLED.key()
+  /** @deprecated Use {@link META_SYNC_ENABLED} and its methods instead */
+  @Deprecated
+  val META_SYNC_ENABLED_OPT_KEY = META_SYNC_ENABLED.key()
+  /** @deprecated Use {@link HIVE_DATABASE} and its methods instead */
+  @Deprecated
+  val HIVE_DATABASE_OPT_KEY = HIVE_DATABASE.key()
+  /** @deprecated Use {@link HIVE_TABLE} and its methods instead */
+  @Deprecated
+  val HIVE_TABLE_OPT_KEY = HIVE_TABLE.key()
+  /** @deprecated Use {@link HIVE_BASE_FILE_FORMAT} and its methods instead */
+  @Deprecated
+  val HIVE_BASE_FILE_FORMAT_OPT_KEY = HIVE_BASE_FILE_FORMAT.key()
+  /** @deprecated Use {@link HIVE_USER} and its methods instead */
+  @Deprecated
+  val HIVE_USER_OPT_KEY = HIVE_USER.key()
+  /** @deprecated Use {@link HIVE_PASS} and its methods instead */
+  @Deprecated
+  val HIVE_PASS_OPT_KEY = HIVE_PASS.key()
+  /** @deprecated Use {@link HIVE_URL} and its methods instead */
+  @Deprecated
+  val HIVE_URL_OPT_KEY = HIVE_URL.key()
+  /** @deprecated Use {@link HIVE_PARTITION_FIELDS} and its methods instead */
+  @Deprecated
+  val HIVE_PARTITION_FIELDS_OPT_KEY = HIVE_PARTITION_FIELDS.key()
+  /** @deprecated Use {@link HIVE_PARTITION_EXTRACTOR_CLASS} and its methods instead */
+  @Deprecated
+  val HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY = HIVE_PARTITION_EXTRACTOR_CLASS.key()
+
+  /** @deprecated Use {@link KEYGENERATOR_CLASS} and its methods instead */
+  @Deprecated
+  val DEFAULT_KEYGENERATOR_CLASS_OPT_VAL = KEYGENERATOR_CLASS.defaultValue()
+  /** @deprecated Use {@link KEYGENERATOR_CLASS} and its methods instead */
+  @Deprecated
+  val KEYGENERATOR_CLASS_OPT_KEY = HoodieWriteConfig.KEYGENERATOR_CLASS.key()
+  /** @deprecated Use {@link ENABLE_ROW_WRITER} and its methods instead */
+  @Deprecated
+  val ENABLE_ROW_WRITER_OPT_KEY = ENABLE_ROW_WRITER.key()
+  /** @deprecated Use {@link ENABLE_ROW_WRITER} and its methods instead */
+  @Deprecated
+  val DEFAULT_ENABLE_ROW_WRITER_OPT_VAL = ENABLE_ROW_WRITER.defaultValue()
+  /** @deprecated Use {@link HIVE_STYLE_PARTITIONING} and its methods instead */
+  @Deprecated
+  val HIVE_STYLE_PARTITIONING_OPT_KEY = KeyGeneratorOptions.HIVE_STYLE_PARTITIONING.key()
+  /** @deprecated Use {@link HIVE_STYLE_PARTITIONING} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_STYLE_PARTITIONING_OPT_VAL = HIVE_STYLE_PARTITIONING.defaultValue()
+
+  val URL_ENCODE_PARTITIONING = KeyGeneratorOptions.URL_ENCODE_PARTITIONING
+  /** @deprecated Use {@link URL_ENCODE_PARTITIONING} and its methods instead */
+  @Deprecated
+  val URL_ENCODE_PARTITIONING_OPT_KEY = KeyGeneratorOptions.URL_ENCODE_PARTITIONING.key()
+  /** @deprecated Use {@link URL_ENCODE_PARTITIONING} and its methods instead */
+  @Deprecated
+  val DEFAULT_URL_ENCODE_PARTITIONING_OPT_VAL = URL_ENCODE_PARTITIONING.defaultValue()
+  /** @deprecated Use {@link COMMIT_METADATA_KEYPREFIX} and its methods instead */
+  @Deprecated
+  val COMMIT_METADATA_KEYPREFIX_OPT_KEY = COMMIT_METADATA_KEYPREFIX.key()
+  /** @deprecated Use {@link COMMIT_METADATA_KEYPREFIX} and its methods instead */
+  @Deprecated
+  val DEFAULT_COMMIT_METADATA_KEYPREFIX_OPT_VAL = COMMIT_METADATA_KEYPREFIX.defaultValue()
+  /** @deprecated Use {@link INSERT_DROP_DUPS} and its methods instead */
+  @Deprecated
+  val INSERT_DROP_DUPS_OPT_KEY = INSERT_DROP_DUPS.key()
+  /** @deprecated Use {@link INSERT_DROP_DUPS} and its methods instead */
+  @Deprecated
+  val DEFAULT_INSERT_DROP_DUPS_OPT_VAL = INSERT_DROP_DUPS.defaultValue()
+  /** @deprecated Use {@link STREAMING_RETRY_CNT} and its methods instead */
+  @Deprecated
+  val STREAMING_RETRY_CNT_OPT_KEY = STREAMING_RETRY_CNT.key()
+  /** @deprecated Use {@link STREAMING_RETRY_CNT} and its methods instead */
+  @Deprecated
+  val DEFAULT_STREAMING_RETRY_CNT_OPT_VAL = STREAMING_RETRY_CNT.defaultValue()
+  /** @deprecated Use {@link STREAMING_RETRY_INTERVAL_MS} and its methods instead */
+  @Deprecated
+  val STREAMING_RETRY_INTERVAL_MS_OPT_KEY = STREAMING_RETRY_INTERVAL_MS.key()
+  /** @deprecated Use {@link STREAMING_RETRY_INTERVAL_MS} and its methods instead */
+  @Deprecated
+  val DEFAULT_STREAMING_RETRY_INTERVAL_MS_OPT_VAL = STREAMING_RETRY_INTERVAL_MS.defaultValue()
+
+  /** @deprecated Use {@link RECORDKEY_FIELD} and its methods instead */
+  @Deprecated
+  val RECORDKEY_FIELD_OPT_KEY = KeyGeneratorOptions.RECORDKEY_FIELD.key()
+  /** @deprecated Use {@link RECORDKEY_FIELD} and its methods instead */
+  @Deprecated
+  val DEFAULT_RECORDKEY_FIELD_OPT_VAL = RECORDKEY_FIELD.defaultValue()
+  /** @deprecated Use {@link PARTITIONPATH_FIELD} and its methods instead */
+  @Deprecated
+  val PARTITIONPATH_FIELD_OPT_KEY = KeyGeneratorOptions.PARTITIONPATH_FIELD.key()
+  /** @deprecated Use {@link PARTITIONPATH_FIELD} and its methods instead */
+  @Deprecated
+  val DEFAULT_PARTITIONPATH_FIELD_OPT_VAL = PARTITIONPATH_FIELD.defaultValue()
+
+  /** @deprecated Use {@link TABLE_NAME} and its methods instead */
+  @Deprecated
+  val TABLE_NAME_OPT_KEY = TABLE_NAME.key()
+  /** @deprecated Use {@link PRECOMBINE_FIELD} and its methods instead */
+  @Deprecated
+  val PRECOMBINE_FIELD_OPT_KEY = HoodieWriteConfig.PRECOMBINE_FIELD.key()
+  /** @deprecated Use {@link PRECOMBINE_FIELD} and its methods instead */
+  @Deprecated
+  val DEFAULT_PRECOMBINE_FIELD_OPT_VAL = PRECOMBINE_FIELD.defaultValue()
+
+  /** @deprecated Use {@link HoodieWriteConfig.WRITE_PAYLOAD_CLASS} and its methods instead */
+  @Deprecated
+  val PAYLOAD_CLASS_OPT_KEY = HoodieWriteConfig.WRITE_PAYLOAD_CLASS.key()
+  /** @deprecated Use {@link HoodieWriteConfig.WRITE_PAYLOAD_CLASS} and its methods instead */
+  @Deprecated
+  val DEFAULT_PAYLOAD_OPT_VAL = PAYLOAD_CLASS.defaultValue()
+
+  /** @deprecated Use {@link TABLE_TYPE} and its methods instead */
+  @Deprecated
+  val TABLE_TYPE_OPT_KEY = TABLE_TYPE.key()
+  /** @deprecated Use {@link TABLE_TYPE} and its methods instead */
+  @Deprecated
+  val DEFAULT_TABLE_TYPE_OPT_VAL = TABLE_TYPE.defaultValue()
+
+  /** @deprecated Use {@link TABLE_TYPE} and its methods instead */
+  @Deprecated
+  val STORAGE_TYPE_OPT = "hoodie.datasource.write.storage.type"
+  @Deprecated
+  val COW_STORAGE_TYPE_OPT_VAL = HoodieTableType.COPY_ON_WRITE.name
+  @Deprecated
+  val MOR_STORAGE_TYPE_OPT_VAL = HoodieTableType.MERGE_ON_READ.name
+  /** @deprecated Use {@link TABLE_TYPE} and its methods instead */
+  @Deprecated
+  val DEFAULT_STORAGE_TYPE_OPT_VAL = COW_STORAGE_TYPE_OPT_VAL
+
+  /** @deprecated Use {@link OPERATION} and its methods instead */
+  @Deprecated
+  val OPERATION_OPT_KEY = OPERATION.key()
+  /** @deprecated Use {@link OPERATION} and its methods instead */
+  @Deprecated
+  val DEFAULT_OPERATION_OPT_VAL = OPERATION.defaultValue()
+
+  /** @deprecated Use {@link HIVE_SYNC_ENABLED} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_SYNC_ENABLED_OPT_VAL = HIVE_SYNC_ENABLED.defaultValue()
+  /** @deprecated Use {@link META_SYNC_ENABLED} and its methods instead */
+  @Deprecated
+  val DEFAULT_META_SYNC_ENABLED_OPT_VAL = META_SYNC_ENABLED.defaultValue()
+  /** @deprecated Use {@link HIVE_DATABASE} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_DATABASE_OPT_VAL = HIVE_DATABASE.defaultValue()
+  /** @deprecated Use {@link HIVE_TABLE} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_TABLE_OPT_VAL = HIVE_TABLE.defaultValue()
+  /** @deprecated Use {@link HIVE_BASE_FILE_FORMAT} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_BASE_FILE_FORMAT_OPT_VAL = HIVE_BASE_FILE_FORMAT.defaultValue()
+  /** @deprecated Use {@link HIVE_USER} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_USER_OPT_VAL = HIVE_USER.defaultValue()
+  /** @deprecated Use {@link HIVE_PASS} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_PASS_OPT_VAL = HIVE_PASS.defaultValue()
+  /** @deprecated Use {@link HIVE_URL} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_URL_OPT_VAL = HIVE_URL.defaultValue()
+  /** @deprecated Use {@link HIVE_PARTITION_FIELDS} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_PARTITION_FIELDS_OPT_VAL = HIVE_PARTITION_FIELDS.defaultValue()
+  /** @deprecated Use {@link HIVE_PARTITION_EXTRACTOR_CLASS} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL = HIVE_PARTITION_EXTRACTOR_CLASS.defaultValue()
+  /** @deprecated Use {@link HIVE_ASSUME_DATE_PARTITION} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_ASSUME_DATE_PARTITION_OPT_VAL = HIVE_ASSUME_DATE_PARTITION.defaultValue()
+  @Deprecated
+  val DEFAULT_USE_PRE_APACHE_INPUT_FORMAT_OPT_VAL = "false"
+  /** @deprecated Use {@link HIVE_USE_JDBC} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_USE_JDBC_OPT_VAL = HIVE_USE_JDBC.defaultValue()
+  /** @deprecated Use {@link HIVE_AUTO_CREATE_DATABASE} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_AUTO_CREATE_DATABASE_OPT_KEY = HIVE_AUTO_CREATE_DATABASE.defaultValue()
+  /** @deprecated Use {@link HIVE_IGNORE_EXCEPTIONS} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_IGNORE_EXCEPTIONS_OPT_KEY = HIVE_IGNORE_EXCEPTIONS.defaultValue()
+  /** @deprecated Use {@link HIVE_SKIP_RO_SUFFIX} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_SKIP_RO_SUFFIX_VAL = HIVE_SKIP_RO_SUFFIX.defaultValue()
+  /** @deprecated Use {@link HIVE_SUPPORT_TIMESTAMP} and its methods instead */
+  @Deprecated
+  val DEFAULT_HIVE_SUPPORT_TIMESTAMP = HIVE_SUPPORT_TIMESTAMP.defaultValue()
+  /** @deprecated Use {@link ASYNC_COMPACT_ENABLE} and its methods instead */
+  @Deprecated
+  val ASYNC_COMPACT_ENABLE_OPT_KEY = ASYNC_COMPACT_ENABLE.key()
+  /** @deprecated Use {@link ASYNC_COMPACT_ENABLE} and its methods instead */
+  @Deprecated
+  val DEFAULT_ASYNC_COMPACT_ENABLE_OPT_VAL = ASYNC_COMPACT_ENABLE.defaultValue()
+  /** @deprecated Use {@link KAFKA_AVRO_VALUE_DESERIALIZER_CLASS} and its methods instead */
+  @Deprecated
+  val KAFKA_AVRO_VALUE_DESERIALIZER = KAFKA_AVRO_VALUE_DESERIALIZER_CLASS.key()
 }
 
 object DataSourceOptionsHelper {
