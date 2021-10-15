@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table;
 
+import org.apache.hudi.common.model.DefaultHoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.configuration.FlinkOptions;
@@ -79,8 +80,11 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
     streamTableEnv = TableEnvironmentImpl.create(settings);
     streamTableEnv.getConfig().getConfiguration()
         .setInteger(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1);
-    streamTableEnv.getConfig().getConfiguration()
-        .setString("execution.checkpointing.interval", "2s");
+    Configuration execConf = streamTableEnv.getConfig().getConfiguration();
+    execConf.setString("execution.checkpointing.interval", "2s");
+    // configure not to retry after failure
+    execConf.setString("restart-strategy", "fixed-delay");
+    execConf.setString("restart-strategy.fixed-delay.attempts", "0");
 
     settings = EnvironmentSettings.newInstance().inBatchMode().build();
     batchTableEnv = TableEnvironmentImpl.create(settings);
@@ -529,12 +533,37 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
   }
 
   @ParameterizedTest
-  @EnumSource(value = ExecMode.class)
-  void testUpsertWithMiniBatches(ExecMode execMode) {
+  @EnumSource(value = HoodieTableType.class)
+  void testStreamWriteAndReadWithMiniBatches(HoodieTableType tableType) throws Exception {
+    // create filesystem table named source
+    String createSource = TestConfigurations.getFileSourceDDL("source", 4);
+    streamTableEnv.executeSql(createSource);
+
+    String hoodieTableDDL = sql("t1")
+        .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
+        .option(FlinkOptions.READ_AS_STREAMING, true)
+        .option(FlinkOptions.TABLE_TYPE, tableType)
+        .option(FlinkOptions.READ_START_COMMIT, "earliest")
+        .option(FlinkOptions.WRITE_BATCH_SIZE, 0.00001)
+        .noPartition()
+        .end();
+    streamTableEnv.executeSql(hoodieTableDDL);
+    String insertInto = "insert into t1 select * from source";
+    execInsertSql(streamTableEnv, insertInto);
+
+    // reading from the earliest commit instance.
+    List<Row> rows = execSelectSql(streamTableEnv, "select * from t1", 20);
+    assertRowsEquals(rows, TestData.DATA_SET_SOURCE_INSERT);
+  }
+
+  @ParameterizedTest
+  @MethodSource("executionModeAndTableTypeParams")
+  void testBatchUpsertWithMiniBatches(ExecMode execMode, HoodieTableType tableType) {
     TableEnvironment tableEnv = execMode == ExecMode.BATCH ? batchTableEnv : streamTableEnv;
     String hoodieTableDDL = sql("t1")
         .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
         .option(FlinkOptions.WRITE_BATCH_SIZE, "0.001")
+        .option(FlinkOptions.TABLE_TYPE, tableType)
         .end();
     tableEnv.executeSql(hoodieTableDDL);
 
@@ -554,6 +583,34 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
     List<Row> result = CollectionUtil.iterableToList(
         () -> tableEnv.sqlQuery("select * from t1").execute().collect());
     assertRowsEquals(result, "[+I[id1, Sophia, 18, 1970-01-01T00:00:05, par1]]");
+  }
+
+  @Test
+  void testUpdateWithDefaultHoodieRecordPayload() {
+    TableEnvironment tableEnv = batchTableEnv;
+    String hoodieTableDDL = sql("t1")
+        .field("id int")
+        .field("name string")
+        .field("price double")
+        .field("ts bigint")
+        .pkField("id")
+        .noPartition()
+        .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
+        .option(FlinkOptions.PAYLOAD_CLASS_NAME, DefaultHoodieRecordPayload.class.getName())
+        .end();
+    tableEnv.executeSql(hoodieTableDDL);
+
+    final String insertInto1 = "insert into t1 values\n"
+        + "(1,'a1',20,20)";
+    execInsertSql(tableEnv, insertInto1);
+
+    final String insertInto4 = "insert into t1 values\n"
+        + "(1,'a1',20,1)";
+    execInsertSql(tableEnv, insertInto4);
+
+    List<Row> result = CollectionUtil.iterableToList(
+        () -> tableEnv.sqlQuery("select * from t1").execute().collect());
+    assertRowsEquals(result, "[+I[1, a1, 20.0, 20]]");
   }
 
   @ParameterizedTest
@@ -595,7 +652,7 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
     String hoodieTableDDL = sql("t1")
         .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
         .option(FlinkOptions.INDEX_GLOBAL_ENABLED, true)
-        .option(FlinkOptions.INSERT_DROP_DUPS, true)
+        .option(FlinkOptions.PRE_COMBINE, true)
         .end();
     streamTableEnv.executeSql(hoodieTableDDL);
 
@@ -617,7 +674,7 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
     String hoodieTableDDL = sql("t1")
         .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
         .option(FlinkOptions.INDEX_GLOBAL_ENABLED, false)
-        .option(FlinkOptions.INSERT_DROP_DUPS, true)
+        .option(FlinkOptions.PRE_COMBINE, true)
         .end();
     streamTableEnv.executeSql(hoodieTableDDL);
 
@@ -958,7 +1015,7 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
     try {
       tableResult.getJobClient().get().getJobExecutionResult().get();
     } catch (InterruptedException | ExecutionException ex) {
-      throw new RuntimeException(ex);
+      // ignored
     }
   }
 

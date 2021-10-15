@@ -212,8 +212,8 @@ public class StreamWriteOperatorCoordinator
           // so a successful checkpoint subsumes the old one(follows the checkpoint subsuming contract)
           final boolean committed = commitInstant(this.instant);
           if (committed) {
-            // if async compaction is on, schedule the compaction
             if (tableState.scheduleCompaction) {
+              // if async compaction is on, schedule the compaction
               writeClient.scheduleCompaction(Option.empty());
             }
             // start new instant.
