@@ -21,8 +21,8 @@ package org.apache.hudi.sink.bootstrap.aggregate;
 import org.apache.flink.api.common.functions.AggregateFunction;
 
 /**
- * Aggregate Function that accumulates the loaded task number of
- * function {@link org.apache.hudi.sink.bootstrap.BootstrapFunction}.
+ * Aggregate function that accumulates the loaded task number of
+ * function {@link org.apache.hudi.sink.bootstrap.BootstrapOperator}.
  */
 public class BootstrapAggFunction implements AggregateFunction<Integer, BootstrapAccumulator, Integer> {
   public static final String NAME = BootstrapAggFunction.class.getSimpleName();
