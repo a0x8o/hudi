@@ -35,7 +35,6 @@ import org.apache.hudi.sink.compact.CompactionCommitSink;
 import org.apache.hudi.sink.compact.CompactionPlanEvent;
 import org.apache.hudi.sink.compact.CompactionPlanOperator;
 import org.apache.hudi.sink.partitioner.BucketAssignFunction;
-import org.apache.hudi.sink.partitioner.BucketAssignOperator;
 import org.apache.hudi.sink.transform.RowDataToHoodieFunctions;
 import org.apache.hudi.table.format.FilePathUtils;
 
@@ -44,6 +43,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.operators.KeyedProcessOperator;
 import org.apache.flink.streaming.api.operators.ProcessOperator;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
@@ -98,15 +98,42 @@ public class Pipelines {
         .name("dummy");
   }
 
+  /**
+   * Constructs bootstrap pipeline as streaming.
+   */
+  public static DataStream<HoodieRecord> bootstrap(
+      Configuration conf,
+      RowType rowType,
+      int defaultParallelism,
+      DataStream<RowData> dataStream) {
+    return bootstrap(conf, rowType, defaultParallelism, dataStream, false, false);
+  }
+
+  /**
+   * Constructs bootstrap pipeline.
+   *
+   * @param conf The configuration
+   * @param rowType The row type
+   * @param defaultParallelism The default parallelism
+   * @param dataStream The data stream
+   * @param bounded Whether the source is bounded
+   * @param overwrite Whether it is insert overwrite
+   */
   public static DataStream<HoodieRecord> bootstrap(
       Configuration conf,
       RowType rowType,
       int defaultParallelism,
       DataStream<RowData> dataStream,
-      boolean bounded) {
-    return bounded
-        ? boundedBootstrap(conf, rowType, defaultParallelism, dataStream)
-        : streamBootstrap(conf, rowType, defaultParallelism, dataStream);
+      boolean bounded,
+      boolean overwrite) {
+    final boolean globalIndex = conf.getBoolean(FlinkOptions.INDEX_GLOBAL_ENABLED);
+    if (overwrite) {
+      return rowDataToHoodieRecord(conf, rowType, dataStream);
+    } else if (bounded && !globalIndex) {
+      return boundedBootstrap(conf, rowType, defaultParallelism, dataStream);
+    } else {
+      return streamBootstrap(conf, rowType, defaultParallelism, dataStream);
+    }
   }
 
   private static DataStream<HoodieRecord> streamBootstrap(
@@ -163,7 +190,7 @@ public class Pipelines {
         .transform(
             "bucket_assigner",
             TypeInformation.of(HoodieRecord.class),
-            new BucketAssignOperator<>(new BucketAssignFunction<>(conf)))
+            new KeyedProcessOperator<>(new BucketAssignFunction<>(conf)))
         .uid("uid_bucket_assigner_" + conf.getString(FlinkOptions.TABLE_NAME))
         .setParallelism(conf.getOptional(FlinkOptions.BUCKET_ASSIGN_TASKS).orElse(defaultParallelism))
         // shuffle by fileId(bucket id)

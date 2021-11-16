@@ -33,6 +33,7 @@ import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
@@ -407,14 +408,19 @@ public class StreamerUtil {
   /**
    * Returns the median instant time between the given two instant time.
    */
-  public static String medianInstantTime(String highVal, String lowVal) {
+  public static Option<String> medianInstantTime(String highVal, String lowVal) {
     try {
       long high = HoodieActiveTimeline.parseInstantTime(highVal).getTime();
       long low = HoodieActiveTimeline.parseInstantTime(lowVal).getTime();
       ValidationUtils.checkArgument(high > low,
           "Instant [" + highVal + "] should have newer timestamp than instant [" + lowVal + "]");
       long median = low + (high - low) / 2;
-      return HoodieActiveTimeline.formatInstantTime(new Date(median));
+      final String instantTime = HoodieActiveTimeline.formatInstantTime(new Date(median));
+      if (HoodieTimeline.compareTimestamps(lowVal, HoodieTimeline.GREATER_THAN_OR_EQUALS, instantTime)
+          || HoodieTimeline.compareTimestamps(highVal, HoodieTimeline.LESSER_THAN_OR_EQUALS, instantTime)) {
+        return Option.empty();
+      }
+      return Option.of(instantTime);
     } catch (ParseException e) {
       throw new HoodieException("Get median instant time with interval [" + lowVal + ", " + highVal + "] error", e);
     }
