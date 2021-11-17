@@ -91,7 +91,8 @@ public class TestMergeOnReadRollbackActionExecutor extends HoodieClientRollbackT
     //2. rollback
     HoodieInstant rollBackInstant = new HoodieInstant(isUsingMarkers, HoodieTimeline.DELTA_COMMIT_ACTION, "002");
     BaseRollbackPlanActionExecutor mergeOnReadRollbackPlanActionExecutor =
-        new BaseRollbackPlanActionExecutor(context, cfg, table, "003", rollBackInstant, false);
+        new BaseRollbackPlanActionExecutor(context, cfg, table, "003", rollBackInstant, false,
+            cfg.shouldRollbackUsingMarkers());
     mergeOnReadRollbackPlanActionExecutor.execute().get();
     MergeOnReadRollbackActionExecutor mergeOnReadRollbackActionExecutor = new MergeOnReadRollbackActionExecutor(
         context,
@@ -161,8 +162,8 @@ public class TestMergeOnReadRollbackActionExecutor extends HoodieClientRollbackT
   public void testRollbackWhenFirstCommitFail() throws Exception {
 
     HoodieWriteConfig config = HoodieWriteConfig.newBuilder()
+        .withRollbackUsingMarkers(false)
         .withPath(basePath).withMetadataConfig(HoodieMetadataConfig.newBuilder().enable(true).build()).build();
-
     try (SparkRDDWriteClient client = getHoodieWriteClient(config)) {
       client.startCommitWithTime("001");
       client.insert(jsc.emptyRDD(), "001");
