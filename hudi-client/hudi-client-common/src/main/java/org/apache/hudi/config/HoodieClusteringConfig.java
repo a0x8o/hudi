@@ -22,7 +22,9 @@ import org.apache.hudi.common.config.ConfigClassProperty;
 import org.apache.hudi.common.config.ConfigGroups;
 import org.apache.hudi.common.config.ConfigProperty;
 import org.apache.hudi.common.config.HoodieConfig;
+import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.exception.HoodieNotSupportedException;
 
 import java.io.File;
 import java.io.FileReader;
@@ -41,6 +43,14 @@ public class HoodieClusteringConfig extends HoodieConfig {
 
   // Any strategy specific params can be saved with this prefix
   public static final String CLUSTERING_STRATEGY_PARAM_PREFIX = "hoodie.clustering.plan.strategy.";
+  public static final String SPARK_SIZED_BASED_CLUSTERING_PLAN_STRATEGY =
+      "org.apache.hudi.client.clustering.plan.strategy.SparkSizeBasedClusteringPlanStrategy";
+  public static final String JAVA_SIZED_BASED_CLUSTERING_PLAN_STRATEGY =
+      "org.apache.hudi.client.clustering.plan.strategy.JavaSizeBasedClusteringPlanStrategy";
+  public static final String SPARK_SORT_AND_SIZE_EXECUTION_STRATEGY =
+      "org.apache.hudi.client.clustering.run.strategy.SparkSortAndSizeExecutionStrategy";
+  public static final String JAVA_SORT_AND_SIZE_EXECUTION_STRATEGY =
+      "org.apache.hudi.client.clustering.run.strategy.JavaSortAndSizeExecutionStrategy";
 
   // Any Space-filling curves optimize(z-order/hilbert) params can be saved with this prefix
   public static final String LAYOUT_OPTIMIZE_PARAM_PREFIX = "hoodie.layout.optimize.";
@@ -59,7 +69,7 @@ public class HoodieClusteringConfig extends HoodieConfig {
 
   public static final ConfigProperty<String> PLAN_STRATEGY_CLASS_NAME = ConfigProperty
       .key("hoodie.clustering.plan.strategy.class")
-      .defaultValue("org.apache.hudi.client.clustering.plan.strategy.SparkSizeBasedClusteringPlanStrategy")
+      .defaultValue(SPARK_SIZED_BASED_CLUSTERING_PLAN_STRATEGY)
       .sinceVersion("0.7.0")
       .withDocumentation("Config to provide a strategy class (subclass of ClusteringPlanStrategy) to create clustering plan "
           + "i.e select what file groups are being clustered. Default strategy, looks at the clustering small file size limit (determined by "
@@ -67,7 +77,7 @@ public class HoodieClusteringConfig extends HoodieConfig {
 
   public static final ConfigProperty<String> EXECUTION_STRATEGY_CLASS_NAME = ConfigProperty
       .key("hoodie.clustering.execution.strategy.class")
-      .defaultValue("org.apache.hudi.client.clustering.run.strategy.SparkSortAndSizeExecutionStrategy")
+      .defaultValue(SPARK_SORT_AND_SIZE_EXECUTION_STRATEGY)
       .sinceVersion("0.7.0")
       .withDocumentation("Config to provide a strategy class (subclass of RunClusteringStrategy) to define how the "
           + " clustering plan is executed. By default, we sort the file groups in th plan by the specified columns, while "
@@ -142,6 +152,17 @@ public class HoodieClusteringConfig extends HoodieConfig {
       .sinceVersion("0.9.0")
       .withDocumentation("When rewriting data, preserves existing hoodie_commit_time");
 
+  /**
+   * Using space-filling curves to optimize the layout of table to boost query performance.
+   * The table data which sorted by space-filling curve has better aggregation;
+   * combine with min-max filtering, it can achieve good performance improvement.
+   *
+   * Notice:
+   * when we use this feature, we need specify the sort columns.
+   * The more columns involved in sorting, the worse the aggregation, and the smaller the query performance improvement.
+   * Choose the filter columns which commonly used in query sql as sort columns.
+   * It is recommend that 2 ~ 4 columns participate in sorting.
+   */
   public static final ConfigProperty LAYOUT_OPTIMIZE_ENABLE = ConfigProperty
       .key(LAYOUT_OPTIMIZE_PARAM_PREFIX + "enable")
       .defaultValue(false)
@@ -190,6 +211,15 @@ public class HoodieClusteringConfig extends HoodieConfig {
       .defaultValue(true)
       .sinceVersion("0.10.0")
       .withDocumentation("Enable data skipping by collecting statistics once layout optimization is complete.");
+
+  public static final ConfigProperty<Boolean> ROLLBACK_PENDING_CLUSTERING_ON_CONFLICT = ConfigProperty
+      .key("hoodie.clustering.rollback.pending.replacecommit.on.conflict")
+      .defaultValue(false)
+      .sinceVersion("0.10.0")
+      .withDocumentation("If updates are allowed to file groups pending clustering, then set this config to rollback failed or pending clustering instants. "
+          + "Pending clustering will be rolled back ONLY IF there is conflict between incoming upsert and filegroup to be clustered. "
+          + "Please exercise caution while setting this config, especially when clustering is done very frequently. This could lead to race condition in "
+          + "rare scenarios, for example, when the clustering completes after instants are fetched but before rollback completed.");
 
   /**
    * @deprecated Use {@link #PLAN_STRATEGY_CLASS_NAME} and its methods instead
@@ -316,6 +346,12 @@ public class HoodieClusteringConfig extends HoodieConfig {
   public static class Builder {
 
     private final HoodieClusteringConfig clusteringConfig = new HoodieClusteringConfig();
+    private EngineType engineType = EngineType.SPARK;
+
+    public Builder withEngineType(EngineType engineType) {
+      this.engineType = engineType;
+      return this;
+    }
 
     public Builder fromFile(File propertiesFile) throws IOException {
       try (FileReader reader = new FileReader(propertiesFile)) {
@@ -404,6 +440,11 @@ public class HoodieClusteringConfig extends HoodieConfig {
       return this;
     }
 
+    public Builder withRollbackPendingClustering(Boolean rollbackPendingClustering) {
+      clusteringConfig.setValue(ROLLBACK_PENDING_CLUSTERING_ON_CONFLICT, String.valueOf(rollbackPendingClustering));
+      return this;
+    }
+
     public Builder withSpaceFillingCurveDataOptimizeEnable(Boolean enable) {
       clusteringConfig.setValue(LAYOUT_OPTIMIZE_ENABLE, String.valueOf(enable));
       return this;
@@ -430,8 +471,36 @@ public class HoodieClusteringConfig extends HoodieConfig {
     }
 
     public HoodieClusteringConfig build() {
+      clusteringConfig.setDefaultValue(
+          PLAN_STRATEGY_CLASS_NAME, getDefaultPlanStrategyClassName(engineType));
+      clusteringConfig.setDefaultValue(
+          EXECUTION_STRATEGY_CLASS_NAME, getDefaultExecutionStrategyClassName(engineType));
       clusteringConfig.setDefaults(HoodieClusteringConfig.class.getName());
       return clusteringConfig;
+    }
+
+    private String getDefaultPlanStrategyClassName(EngineType engineType) {
+      switch (engineType) {
+        case SPARK:
+          return SPARK_SIZED_BASED_CLUSTERING_PLAN_STRATEGY;
+        case FLINK:
+        case JAVA:
+          return JAVA_SIZED_BASED_CLUSTERING_PLAN_STRATEGY;
+        default:
+          throw new HoodieNotSupportedException("Unsupported engine " + engineType);
+      }
+    }
+
+    private String getDefaultExecutionStrategyClassName(EngineType engineType) {
+      switch (engineType) {
+        case SPARK:
+          return SPARK_SORT_AND_SIZE_EXECUTION_STRATEGY;
+        case FLINK:
+        case JAVA:
+          return JAVA_SORT_AND_SIZE_EXECUTION_STRATEGY;
+        default:
+          throw new HoodieNotSupportedException("Unsupported engine " + engineType);
+      }
     }
   }
 
