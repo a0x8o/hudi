@@ -20,6 +20,7 @@ package org.apache.hudi.utilities.functional;
 
 import org.apache.hudi.AvroConversionUtils;
 import org.apache.hudi.DataSourceWriteOptions;
+import org.apache.hudi.client.SparkRDDWriteClient;
 import org.apache.hudi.common.config.DFSPropertiesConfiguration;
 import org.apache.hudi.common.config.HoodieConfig;
 import org.apache.hudi.common.config.HoodieMetadataConfig;
@@ -37,10 +38,12 @@ import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
+import org.apache.hudi.common.testutils.HoodieTestUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.config.HoodieClusteringConfig;
 import org.apache.hudi.config.HoodieCompactionConfig;
+import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.TableNotFoundException;
 import org.apache.hudi.hive.HiveSyncConfig;
@@ -48,8 +51,10 @@ import org.apache.hudi.hive.HoodieHiveClient;
 import org.apache.hudi.keygen.SimpleKeyGenerator;
 import org.apache.hudi.utilities.DummySchemaProvider;
 import org.apache.hudi.utilities.HoodieClusteringJob;
+import org.apache.hudi.utilities.deltastreamer.DeltaSync;
 import org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer;
 import org.apache.hudi.utilities.schema.FilebasedSchemaProvider;
+import org.apache.hudi.utilities.schema.SchemaProvider;
 import org.apache.hudi.utilities.schema.SparkAvroPostProcessor;
 import org.apache.hudi.utilities.sources.CsvDFSSource;
 import org.apache.hudi.utilities.sources.HoodieIncrSource;
@@ -68,6 +73,7 @@ import org.apache.hudi.utilities.transform.Transformer;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
@@ -102,6 +108,7 @@ import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -145,7 +152,7 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
 
   protected HoodieClusteringJob initialHoodieClusteringJob(String tableBasePath, String clusteringInstantTime, Boolean runSchedule, String scheduleAndExecute, Boolean retryLastFailedClusteringJob) {
     HoodieClusteringJob.Config scheduleClusteringConfig = buildHoodieClusteringUtilConfig(tableBasePath,
-            clusteringInstantTime, runSchedule, scheduleAndExecute, retryLastFailedClusteringJob);
+        clusteringInstantTime, runSchedule, scheduleAndExecute, retryLastFailedClusteringJob);
     return new HoodieClusteringJob(jsc, scheduleClusteringConfig);
   }
 
@@ -371,7 +378,7 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
   @Test
   public void testProps() {
     TypedProperties props =
-        new DFSPropertiesConfiguration(dfs, new Path(dfsBasePath + "/" + PROPS_FILENAME_TEST_SOURCE)).getProps();
+        new DFSPropertiesConfiguration(dfs.getConf(), new Path(dfsBasePath + "/" + PROPS_FILENAME_TEST_SOURCE)).getProps();
     assertEquals(2, props.getInteger("hoodie.upsert.shuffle.parallelism"));
     assertEquals("_row_key", props.getString("hoodie.datasource.write.recordkey.field"));
     assertEquals("org.apache.hudi.utilities.functional.TestHoodieDeltaStreamer$TestGenerator",
@@ -491,7 +498,7 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
     String checkpointProviderClass = "org.apache.hudi.utilities.checkpointing.KafkaConnectHdfsProvider";
     HoodieDeltaStreamer.Config cfg = TestHelpers.makeDropAllConfig(tableBasePath, WriteOperationType.UPSERT);
     TypedProperties props =
-        new DFSPropertiesConfiguration(dfs, new Path(dfsBasePath + "/" + PROPS_FILENAME_TEST_SOURCE)).getProps();
+        new DFSPropertiesConfiguration(dfs.getConf(), new Path(dfsBasePath + "/" + PROPS_FILENAME_TEST_SOURCE)).getProps();
     props.put("hoodie.deltastreamer.checkpoint.provider.path", bootstrapPath);
     cfg.initialCheckpointProvider = checkpointProviderClass;
     // create regular kafka connect hdfs dirs
@@ -924,6 +931,31 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
     });
   }
 
+  /**
+   * When deltastreamer writes clashes with pending clustering, deltastreamer should keep retrying and eventually succeed(once clustering completes)
+   * w/o failing mid way.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testAsyncClusteringServiceWithConflicts() throws Exception {
+    String tableBasePath = dfsBasePath + "/asyncClusteringWithConflicts";
+    // Keep it higher than batch-size to test continuous mode
+    int totalRecords = 3000;
+
+    // Initial bulk insert
+    HoodieDeltaStreamer.Config cfg = TestHelpers.makeConfig(tableBasePath, WriteOperationType.UPSERT);
+    cfg.continuousMode = true;
+    cfg.tableType = HoodieTableType.COPY_ON_WRITE.name();
+    cfg.configs.addAll(getAsyncServicesConfigs(totalRecords, "false", "", "", "true", "2"));
+    HoodieDeltaStreamer ds = new HoodieDeltaStreamer(cfg, jsc);
+    deltaStreamerTestRunner(ds, cfg, (r) -> {
+      TestHelpers.assertAtLeastNCommits(2, tableBasePath, dfs);
+      TestHelpers.assertAtLeastNReplaceCommits(2, tableBasePath, dfs);
+      return true;
+    });
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"true", "false"})
   public void testAsyncClusteringServiceWithCompaction(String preserveCommitMetadata) throws Exception {
@@ -1312,7 +1344,7 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
 
     // Properties used for testing delta-streamer with orc source
     orcProps.setProperty("include", "base.properties");
-    orcProps.setProperty("hoodie.embed.timeline.server","false");
+    orcProps.setProperty("hoodie.embed.timeline.server", "false");
     orcProps.setProperty("hoodie.datasource.write.recordkey.field", "_row_key");
     orcProps.setProperty("hoodie.datasource.write.partitionpath.field", "not_there");
     if (useSchemaProvider) {
@@ -1326,9 +1358,9 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
 
     String tableBasePath = dfsBasePath + "/test_orc_source_table" + testNum;
     HoodieDeltaStreamer deltaStreamer = new HoodieDeltaStreamer(
-            TestHelpers.makeConfig(tableBasePath, WriteOperationType.INSERT, ORCDFSSource.class.getName(),
-                    transformerClassNames, PROPS_FILENAME_TEST_ORC, false,
-                    useSchemaProvider, 100000, false, null, null, "timestamp", null), jsc);
+        TestHelpers.makeConfig(tableBasePath, WriteOperationType.INSERT, ORCDFSSource.class.getName(),
+            transformerClassNames, PROPS_FILENAME_TEST_ORC, false,
+            useSchemaProvider, 100000, false, null, null, "timestamp", null), jsc);
     deltaStreamer.sync();
     TestHelpers.assertRecordCount(ORC_NUM_RECORDS, tableBasePath + "/*/*.parquet", sqlContext);
     testNum++;
@@ -1691,6 +1723,46 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
     TestHelpers.assertCommitMetadata("00001", tableBasePath, dfs, 2);
   }
 
+  @Test
+  public void testFetchingCheckpointFromPreviousCommits() throws IOException {
+    HoodieDeltaStreamer.Config cfg = TestHelpers.makeConfig(dfsBasePath + "/testFetchPreviousCheckpoint", WriteOperationType.BULK_INSERT);
+
+    TypedProperties properties = new TypedProperties();
+    properties.setProperty("hoodie.datasource.write.recordkey.field","key");
+    properties.setProperty("hoodie.datasource.write.partitionpath.field","pp");
+    TestDeltaSync testDeltaSync = new TestDeltaSync(cfg, sparkSession, null, properties,
+        jsc, dfs, jsc.hadoopConfiguration(), null);
+
+    properties.put(HoodieTableConfig.NAME.key(), "sample_tbl");
+    HoodieTableMetaClient metaClient = HoodieTestUtils.init(jsc.hadoopConfiguration(), dfsBasePath, HoodieTableType.COPY_ON_WRITE, properties);
+
+    Map<String, String> extraMetadata = new HashMap<>();
+    extraMetadata.put(HoodieWriteConfig.DELTASTREAMER_CHECKPOINT_KEY, "abc");
+    addCommitToTimeline(metaClient, extraMetadata);
+    metaClient.reloadActiveTimeline();
+    assertEquals(testDeltaSync.getPreviousCheckpoint(metaClient.getActiveTimeline().getCommitsTimeline()).get(), "abc");
+
+    addCommitToTimeline(metaClient, Collections.emptyMap());
+    metaClient.reloadActiveTimeline();
+    extraMetadata.put(HoodieWriteConfig.DELTASTREAMER_CHECKPOINT_KEY, "def");
+    addCommitToTimeline(metaClient, extraMetadata);
+    metaClient.reloadActiveTimeline();
+    assertEquals(testDeltaSync.getPreviousCheckpoint(metaClient.getActiveTimeline().getCommitsTimeline()).get(), "def");
+  }
+
+  class TestDeltaSync extends DeltaSync {
+
+    public TestDeltaSync(HoodieDeltaStreamer.Config cfg, SparkSession sparkSession, SchemaProvider schemaProvider, TypedProperties props,
+                         JavaSparkContext jssc, FileSystem fs, Configuration conf,
+                         Function<SparkRDDWriteClient, Boolean> onInitializingHoodieWriteClient) throws IOException {
+      super(cfg, sparkSession, schemaProvider, props, jssc, fs, conf, onInitializingHoodieWriteClient);
+    }
+
+    protected Option<String> getPreviousCheckpoint(HoodieTimeline timeline) throws IOException {
+      return super.getPreviousCheckpoint(timeline);
+    }
+  }
+
   /**
    * UDF to calculate Haversine distance.
    */
@@ -1797,8 +1869,8 @@ public class TestHoodieDeltaStreamer extends HoodieDeltaStreamerTestBase {
   private static Stream<Arguments> testORCDFSSource() {
     // arg1 boolean useSchemaProvider, arg2 List<String> transformerClassNames
     return Stream.of(
-            arguments(false, null),
-            arguments(true, Collections.singletonList(TripsWithDistanceTransformer.class.getName()))
+        arguments(false, null),
+        arguments(true, Collections.singletonList(TripsWithDistanceTransformer.class.getName()))
     );
   }
 

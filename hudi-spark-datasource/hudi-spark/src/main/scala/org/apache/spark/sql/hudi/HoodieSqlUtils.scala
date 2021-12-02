@@ -48,7 +48,12 @@ import java.text.SimpleDateFormat
 import scala.collection.immutable.Map
 
 object HoodieSqlUtils extends SparkAdapterSupport {
-  private val defaultDateFormat = new SimpleDateFormat("yyyy-MM-dd")
+  // NOTE: {@code SimpleDataFormat} is NOT thread-safe
+  // TODO replace w/ DateTimeFormatter
+  private val defaultDateFormat =
+    ThreadLocal.withInitial(new java.util.function.Supplier[SimpleDateFormat] {
+      override def get() = new SimpleDateFormat("yyyy-MM-dd")
+    })
 
   def isHoodieTable(table: CatalogTable): Boolean = {
     table.provider.map(_.toLowerCase(Locale.ROOT)).orNull == "hudi"
@@ -75,13 +80,14 @@ object HoodieSqlUtils extends SparkAdapterSupport {
     }
   }
 
-  def getTableSqlSchema(metaClient: HoodieTableMetaClient): Option[StructType] = {
+  def getTableSqlSchema(metaClient: HoodieTableMetaClient,
+      includeMetadataFields: Boolean = false): Option[StructType] = {
     val schemaResolver = new TableSchemaResolver(metaClient)
-    val avroSchema = try Some(schemaResolver.getTableAvroSchema(false))
+    val avroSchema = try Some(schemaResolver.getTableAvroSchema(includeMetadataFields))
     catch {
       case _: Throwable => None
     }
-    avroSchema.map(AvroConversionUtils.convertAvroSchemaToStructType).map(removeMetaFields)
+    avroSchema.map(AvroConversionUtils.convertAvroSchemaToStructType)
   }
 
   def getAllPartitionPaths(spark: SparkSession, table: CatalogTable): Seq[String] = {
@@ -298,10 +304,27 @@ object HoodieSqlUtils extends SparkAdapterSupport {
       HoodieActiveTimeline.parseDateFromInstantTime(queryInstant) // validate the format
       queryInstant
     } else if (instantLength == 10) { // for yyyy-MM-dd
-      HoodieActiveTimeline.formatDate(defaultDateFormat.parse(queryInstant))
+      HoodieActiveTimeline.formatDate(defaultDateFormat.get().parse(queryInstant))
     } else {
       throw new IllegalArgumentException(s"Unsupported query instant time format: $queryInstant,"
-        + s"Supported time format are: 'yyyy-MM-dd: HH:mm:ss' or 'yyyy-MM-dd' or 'yyyyMMddHHmmss'")
+        + s"Supported time format are: 'yyyy-MM-dd: HH:mm:ss.SSS' or 'yyyy-MM-dd' or 'yyyyMMddHHmmssSSS'")
+    }
+  }
+
+  def formatName(sparkSession: SparkSession, name: String): String = {
+    if (sparkSession.sessionState.conf.caseSensitiveAnalysis) name else name.toLowerCase(Locale.ROOT)
+  }
+
+  /**
+   * Check if this is a empty table path.
+   */
+  def isEmptyPath(tablePath: String, conf: Configuration): Boolean = {
+    val basePath = new Path(tablePath)
+    val fs = basePath.getFileSystem(conf)
+    if (fs.exists(basePath)) {
+      fs.listStatus(basePath).isEmpty
+    } else {
+      true
     }
   }
 }

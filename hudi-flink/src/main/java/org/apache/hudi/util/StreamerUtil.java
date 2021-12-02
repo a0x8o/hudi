@@ -28,7 +28,6 @@ import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
-import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
@@ -102,7 +101,7 @@ public class StreamerUtil {
       return new TypedProperties();
     }
     return readConfig(
-        FSUtils.getFs(cfg.propsFilePath, getHadoopConf()),
+        getHadoopConf(),
         new Path(cfg.propsFilePath), cfg.configs).getProps();
   }
 
@@ -127,8 +126,8 @@ public class StreamerUtil {
   /**
    * Read config from properties file (`--props` option) and cmd line (`--hoodie-conf` option).
    */
-  public static DFSPropertiesConfiguration readConfig(FileSystem fs, Path cfgPath, List<String> overriddenProps) {
-    DFSPropertiesConfiguration conf = new DFSPropertiesConfiguration(fs, cfgPath);
+  public static DFSPropertiesConfiguration readConfig(org.apache.hadoop.conf.Configuration hadoopConfig, Path cfgPath, List<String> overriddenProps) {
+    DFSPropertiesConfiguration conf = new DFSPropertiesConfiguration(hadoopConfig, cfgPath);
     try {
       if (!overriddenProps.isEmpty()) {
         LOG.info("Adding overridden properties to file properties.");
@@ -233,8 +232,6 @@ public class StreamerUtil {
     Properties properties = new Properties();
     // put all the set options
     flatConf.addAllToProperties(properties);
-    // ugly: table keygen clazz, needed by TwoToThreeUpgradeHandler
-    properties.put(HoodieTableConfig.KEY_GENERATOR_CLASS_NAME.key(), conf.getString(FlinkOptions.KEYGEN_CLASS_NAME));
     // put all the default options
     for (ConfigOption<?> option : FlinkOptions.optionalOptions()) {
       if (!flatConf.contains(option) && option.hasDefaultValue()) {
