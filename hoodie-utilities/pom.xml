@@ -137,7 +137,7 @@
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-server</artifactId>
-      <version>7.6.0.v20120127</version>
+      <version>10.0.10</version>
     </dependency>
 
     <dependency>
